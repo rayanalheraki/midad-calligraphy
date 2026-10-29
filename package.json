@@ -1,0 +1,49 @@
+{
+  "name": "kelk-web",
+  "private": true,
+  "version": "1.0.0",
+  "description": "كِلك ويب — محرر خط عربي يعمل في المتصفح (إعادة بناء ويب لفكرة برنامج Kelk 2010)",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 5173 --strictPort",
+    "build": "tsc --noEmit && vite build",
+    "start": "node server.mjs",
+    "preview": "npm run build && node server.mjs",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@expo-google-fonts/alkalami": "0.4.1",
+    "@expo-google-fonts/amiri": "0.4.1",
+    "@expo-google-fonts/amiri-quran": "0.4.1",
+    "@expo-google-fonts/aref-ruqaa": "0.4.1",
+    "@expo-google-fonts/el-messiri": "0.4.2",
+    "@expo-google-fonts/gulzar": "0.4.2",
+    "@expo-google-fonts/jomhuria": "0.4.1",
+    "@expo-google-fonts/katibeh": "0.4.1",
+    "@expo-google-fonts/lalezar": "0.4.1",
+    "@expo-google-fonts/lateef": "0.4.2",
+    "@expo-google-fonts/marhey": "0.4.2",
+    "@expo-google-fonts/mirza": "0.4.1",
+    "@expo-google-fonts/noto-nastaliq-urdu": "0.4.2",
+    "@expo-google-fonts/qahiri": "0.4.3",
+    "@expo-google-fonts/rakkas": "0.4.1",
+    "@expo-google-fonts/reem-kufi": "0.4.2",
+    "@expo-google-fonts/scheherazade-new": "0.4.3",
+    "@fontsource/tajawal": "5.3.0",
+    "harfbuzzjs": "1.6.4",
+    "immer": "11.2.9",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "zustand": "5.0.16"
+  },
+  "devDependencies": {
+    "@types/node": "24.19.2",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.1.2",
+    "typescript": "5.9.3",
+    "vite": "8.3.5",
+    "vitest": "5.0.5"
+  }
+}

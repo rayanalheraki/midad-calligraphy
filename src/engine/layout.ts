@@ -1,0 +1,187 @@
+import type { TextObject } from '../model/types';
+import { insertKashida, justifyCounts, kashidaCounts } from './arabic';
+import type { LoadedFont } from './fonts';
+import {
+  IDENTITY,
+  apply,
+  chain,
+  emptyRect,
+  isEmptyRect,
+  rotate,
+  rotateAbout,
+  scale,
+  transformPath,
+  transformRect,
+  translate,
+  unionRect,
+  type Matrix,
+  type Point,
+  type Rect,
+} from './geom';
+import { glyphOutline, measureText, shapeText } from './shape';
+
+export interface PlacedGlyph {
+  /** stable key used for per-glyph overrides: "<origin index>[k].<n>" */
+  key: string;
+  /** path data in the object's local coordinates (mm) */
+  d: string;
+  bbox: Rect;
+  center: Point;
+  mark: boolean;
+  kashida: boolean;
+  /** UTF-16 index of the source character in the object's text */
+  origin: number;
+  color: string | null;
+  hidden: boolean;
+}
+
+export interface TextGeometry {
+  glyphs: PlacedGlyph[];
+  /** bounds of one copy, local coordinates */
+  baseBox: Rect;
+  /** bounds including repeats and mirror copies */
+  box: Rect;
+  copies: Matrix[];
+  /** natural width of the shaped line in mm */
+  width: number;
+  shapedText: string;
+}
+
+const cache = new WeakMap<TextObject, { lf: LoadedFont; geo: TextGeometry }>();
+
+export function textGeometry(obj: TextObject, lf: LoadedFont): TextGeometry {
+  const hit = cache.get(obj);
+  if (hit && hit.lf === lf) return hit.geo;
+  const geo = computeTextGeometry(obj, lf);
+  cache.set(obj, { lf, geo });
+  return geo;
+}
+
+function curvePoint(obj: TextObject, xc: number, totalWidth: number): { p: Point; angle: number } {
+  const path = obj.path;
+  if (path.mode === 'arc' || path.mode === 'circle') {
+    let r: number;
+    if (path.mode === 'arc') r = Math.max(5, Math.abs(path.radius));
+    else r = Math.max(2, totalWidth / ((Math.max(20, Math.min(359, path.sweep)) * Math.PI) / 180));
+    if (path.flip) r = -r;
+    const phi = xc / r;
+    return { p: { x: r * Math.sin(phi), y: r - r * Math.cos(phi) }, angle: (phi * 180) / Math.PI };
+  }
+  if (path.mode === 'wave') {
+    const lambda = Math.max(5, path.wavelength);
+    const amp = path.flip ? -path.amplitude : path.amplitude;
+    const k = (2 * Math.PI) / lambda;
+    return { p: { x: xc, y: amp * Math.sin(k * xc) }, angle: (Math.atan(amp * k * Math.cos(k * xc)) * 180) / Math.PI };
+  }
+  return { p: { x: xc, y: 0 }, angle: 0 };
+}
+
+export function computeTextGeometry(obj: TextObject, lf: LoadedFont): TextGeometry {
+  const features = obj.features.filter((f) => lf.optionalFeatures.includes(f));
+  const useKashida = lf.def.kashida;
+  let counts = useKashida ? kashidaCounts(obj.text, obj.kashida, obj.kashidaAt) : new Map<number, number>();
+  if (useKashida && obj.justifyWidth > 0) {
+    counts = justifyCounts(obj.text, counts, obj.justifyWidth, (t) => measureText(lf, t, features, obj.size, obj.wordSpacing));
+  }
+  const kt = insertKashida(obj.text, counts);
+  const run = shapeText(lf, kt.text, features);
+  const s = obj.size / lf.upem;
+  const spaceExtra = obj.wordSpacing / s;
+
+  // Pen positions in font units (visual order, left to right).
+  const pens: number[] = [];
+  const advances: number[] = [];
+  let pen = 0;
+  for (const g of run.glyphs) {
+    pens.push(pen);
+    const ch = kt.text[g.cluster];
+    const extra = ch === ' ' || ch === ' ' ? spaceExtra : 0;
+    advances.push(g.ax + extra);
+    pen += g.ax + extra;
+  }
+  const totalUnits = pen;
+  const totalMm = totalUnits * s;
+
+  const occurrences = new Map<string, number>();
+  const glyphs: PlacedGlyph[] = [];
+  let baseBox = emptyRect();
+
+  for (let i = 0; i < run.glyphs.length; i++) {
+    const g = run.glyphs[i];
+    const origin = kt.origin[g.cluster] ?? 0;
+    const isKashida = kt.inserted[g.cluster] ?? false;
+    const keyBase = `${origin}${isKashida ? 'k' : ''}`;
+    const n = occurrences.get(keyBase) ?? 0;
+    occurrences.set(keyBase, n + 1);
+    const key = `${keyBase}.${n}`;
+
+    const outline = glyphOutline(lf, g.gid);
+    if (!outline.box) continue;
+    if (g.mark && obj.hideMarks) continue;
+
+    // Zero-advance glyphs (marks) share the cell of the next glyph with an advance.
+    let cell = advances[i];
+    if (cell === 0) {
+      for (let j = i + 1; j < run.glyphs.length; j++) {
+        if (advances[j] > 0) {
+          cell = advances[j];
+          break;
+        }
+      }
+    }
+    const xcMm = (pens[i] + cell / 2 - totalUnits / 2) * s;
+    const originX = (pens[i] + g.dx - totalUnits / 2) * s;
+    const originY = -g.dy * s;
+    const { p, angle } = curvePoint(obj, xcMm, totalMm);
+    let m: Matrix = chain(translate(p.x, p.y), rotate(angle), translate(originX - xcMm, originY), scale(s, -s));
+
+    const ov = obj.glyphs[key];
+    if (ov && (ov.dx || ov.dy || ov.rotate || ov.scale !== 1)) {
+      const b = transformRect(m, outline.box);
+      const cx = (b.minX + b.maxX) / 2;
+      const cy = (b.minY + b.maxY) / 2;
+      m = chain(translate(ov.dx, ov.dy), translate(cx, cy), rotate(ov.rotate), scale(ov.scale || 1), translate(-cx, -cy), m);
+    }
+    const bbox = transformRect(m, outline.box);
+    const center = apply(m, (outline.box.minX + outline.box.maxX) / 2, (outline.box.minY + outline.box.maxY) / 2);
+    const hidden = !!ov?.hidden;
+    glyphs.push({
+      key,
+      d: transformPath(outline.cmds, m),
+      bbox,
+      center,
+      mark: g.mark,
+      kashida: isKashida,
+      origin,
+      color: ov?.color ?? (g.mark && obj.markColor ? obj.markColor : null),
+      hidden,
+    });
+    if (!hidden) baseBox = unionRect(baseBox, bbox);
+  }
+  if (isEmptyRect(baseBox)) baseBox = { minX: -obj.size, minY: -obj.size, maxX: obj.size, maxY: obj.size * 0.4 };
+
+  // Copies: rotational repeat (Kelk's "virtual repeat") then mirror (musanna).
+  let copies: Matrix[] = [IDENTITY];
+  const count = Math.max(1, Math.min(72, Math.round(obj.repeat.count)));
+  if (count > 1) {
+    copies = [];
+    for (let k = 0; k < count; k++) copies.push(rotateAbout(k * obj.repeat.angle, 0, obj.repeat.offset));
+  }
+  let box = copies.reduce((acc, c) => unionRect(acc, transformRect(c, baseBox)), emptyRect());
+  // Mirror pairs are laid out symmetrically around the anchor, the gap straddling it.
+  if (obj.mirror === 'x') {
+    const shift = translate(obj.mirrorGap / 2 - box.minX, 0);
+    const original = copies.map((c) => chain(shift, c));
+    copies = [...original, ...original.map((c) => chain(scale(-1, 1), c))];
+  } else if (obj.mirror === 'y') {
+    const shift = translate(0, -obj.mirrorGap / 2 - box.maxY);
+    const original = copies.map((c) => chain(shift, c));
+    copies = [...original, ...original.map((c) => chain(scale(1, -1), c))];
+  }
+  box = copies.reduce((acc, c) => unionRect(acc, transformRect(c, baseBox)), emptyRect());
+
+  return { glyphs, baseBox, box, copies, width: totalMm, shapedText: kt.text };
+}
+
+/** Kashida slot letter indices available for the per-letter tool. */
+export { kashidaSlots } from './arabic';
