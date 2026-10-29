@@ -1,9 +1,9 @@
 import { memo } from 'react';
-import type { DocObject, ImageObject, InkObject, Page, ShapeObject, TextObject } from '../model/types';
+import type { DocObject, ImageObject, MarkObject, Page, TextObject } from '../model/types';
 import { getLoadedFont } from '../engine/fonts';
 import { textGeometry } from '../engine/layout';
 import { fmt, matrixToSvg, objectMatrix } from '../engine/geom';
-import { shapeParts } from '../engine/ornaments';
+import { markGeometry } from '../engine/marks';
 import { patternTile } from '../engine/patterns';
 import { localBox } from './bounds';
 import { paintFor, shadowFilter } from './paint';
@@ -76,40 +76,35 @@ function TextView({ o, mode, glyphEdit }: ViewProps<TextObject>) {
   );
 }
 
-function ShapeView({ o, mode }: ViewProps<ShapeObject>) {
-  const parts = shapeParts(o);
-  const box = localBox(o);
-  const fill = o.fill ? paintFor(o.id, o.fill, box) : null;
-  const shadow = shadowFilter(o.id, o.shadow);
-  const strokeColor = o.stroke?.color ?? '#1b1e27';
-  const strokeWidth = o.stroke ? fmt(o.stroke.width) : undefined;
-  const hitWidth = Math.max(3, (o.stroke?.width ?? 0) * 2);
+function MarkView({ o, mode }: ViewProps<MarkObject>) {
+  const geo = markGeometry(o);
+  const transform = matrixToSvg(objectMatrix(o));
+  if (!geo) {
+    if (mode === 'export') return null;
+    const b = localBox(o);
+    return (
+      <g transform={transform} data-oid={o.id}>
+        <rect x={b.minX} y={b.minY} width={b.maxX - b.minX} height={b.maxY - b.minY} className="font-loading" />
+      </g>
+    );
+  }
+  const fill = paintFor(o.id, o.fill, geo.box);
+  // Small elements get a slightly larger invisible target so they are easy to pick up.
+  const pad = Math.max(0.6, (geo.box.maxX - geo.box.minX) * 0.15);
   return (
-    <g transform={matrixToSvg(objectMatrix(o))} opacity={o.opacity < 1 ? o.opacity : undefined} filter={shadow.filter} data-oid={mode === 'edit' ? o.id : undefined}>
-      {(fill?.defs || shadow.defs) && (
-        <defs>
-          {fill?.defs}
-          {shadow.defs}
-        </defs>
+    <g transform={transform} opacity={o.opacity < 1 ? o.opacity : undefined} data-oid={mode === 'edit' ? o.id : undefined}>
+      {fill.defs && <defs>{fill.defs}</defs>}
+      {mode === 'edit' && (
+        <rect
+          className="hit"
+          x={fmt(geo.box.minX - pad)}
+          y={fmt(geo.box.minY - pad)}
+          width={fmt(geo.box.maxX - geo.box.minX + 2 * pad)}
+          height={fmt(geo.box.maxY - geo.box.minY + 2 * pad)}
+          fill="transparent"
+        />
       )}
-      {parts.map((p, i) => {
-        if (p.role === 'solid') return <path key={i} d={p.d} fill={fill?.paint ?? strokeColor} />;
-        if (p.role === 'outline')
-          return <path key={i} d={p.d} fill="none" stroke={strokeColor} strokeWidth={strokeWidth ?? fmt(0.4)} strokeLinejoin="round" />;
-        return (
-          <path
-            key={i}
-            d={p.d}
-            fill={fill?.paint ?? 'none'}
-            fillRule="nonzero"
-            stroke={o.stroke ? strokeColor : 'none'}
-            strokeWidth={strokeWidth}
-            strokeLinejoin="round"
-          />
-        );
-      })}
-      {mode === 'edit' &&
-        parts.map((p, i) => <path key={'hit' + i} d={p.d} fill="none" stroke="transparent" strokeWidth={hitWidth} pointerEvents="stroke" />)}
+      <path d={geo.d} fill={fill.paint} />
     </g>
   );
 }
@@ -118,14 +113,6 @@ function ImageView({ o, mode }: ViewProps<ImageObject>) {
   return (
     <g transform={matrixToSvg(objectMatrix(o))} opacity={o.opacity < 1 ? o.opacity : undefined} data-oid={mode === 'edit' ? o.id : undefined}>
       <image href={o.src} x={fmt(-o.w / 2)} y={fmt(-o.h / 2)} width={fmt(o.w)} height={fmt(o.h)} preserveAspectRatio="none" />
-    </g>
-  );
-}
-
-function InkView({ o, mode }: ViewProps<InkObject>) {
-  return (
-    <g transform={matrixToSvg(objectMatrix(o))} opacity={o.opacity < 1 ? o.opacity : undefined} data-oid={mode === 'edit' ? o.id : undefined}>
-      <path d={o.d} fill={o.color} />
     </g>
   );
 }
@@ -141,12 +128,10 @@ export const ObjectView = memo(function ObjectView({ o, mode, glyphEdit }: Objec
   switch (o.type) {
     case 'text':
       return <TextView o={o} mode={mode} glyphEdit={glyphEdit} />;
-    case 'shape':
-      return <ShapeView o={o} mode={mode} />;
+    case 'mark':
+      return <MarkView o={o} mode={mode} />;
     case 'image':
       return <ImageView o={o} mode={mode} />;
-    case 'ink':
-      return <InkView o={o} mode={mode} />;
   }
 });
 

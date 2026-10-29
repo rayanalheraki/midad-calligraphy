@@ -2,9 +2,10 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { insertKashida, joiningType, kashidaCounts, kashidaSlots } from '../src/engine/arabic';
 import type { LoadedFont } from '../src/engine/fonts';
 import { computeTextGeometry } from '../src/engine/layout';
-import { reedPenStroke } from '../src/engine/pen';
+import { markGeometry } from '../src/engine/marks';
 import { shapeText } from '../src/engine/shape';
-import { createText } from '../src/model/defaults';
+import { createMark, createText } from '../src/model/defaults';
+import { ELEMENTS, findElement, markFromElement } from '../src/model/elements';
 import { loadTestFont } from './helpers';
 
 describe('Arabic joining and kashida', () => {
@@ -102,11 +103,41 @@ describe('shaping and layout', () => {
   });
 });
 
-describe('reed pen', () => {
-  it('produces thick strokes across the nib and thin ones along it', () => {
-    const across = reedPenStroke([{ x: 0, y: 0, p: 1 }, { x: 0, y: 20, p: 1 }], 4, 0, false);
-    const along = reedPenStroke([{ x: 0, y: 0, p: 1 }, { x: 20, y: 0, p: 1 }], 4, 0, false);
-    expect(across.box.maxX - across.box.minX).toBeCloseTo(4, 3);
-    expect(along.box.maxY - along.box.minY).toBeCloseTo(0, 3);
+describe('standalone elements', () => {
+  beforeAll(async () => {
+    await loadTestFont('amiri');
+    await loadTestFont('amiri-quran');
+    await loadTestFont('scheherazade');
+    await loadTestFont('reem-kufi');
+  });
+
+  it('draws a diacritic centred on its origin', () => {
+    const fatha = markFromElement(findElement('fatha')!, { fontId: 'amiri', size: 20, fill: { kind: 'solid', color: '#000000' } }, null, 50, 50);
+    const geo = markGeometry(fatha)!;
+    expect(geo.d.length).toBeGreaterThan(10);
+    expect(Math.abs((geo.box.minX + geo.box.maxX) / 2)).toBeLessThan(0.01);
+    expect(Math.abs((geo.box.minY + geo.box.maxY) / 2)).toBeLessThan(0.01);
+    expect(geo.box.maxX - geo.box.minX).toBeGreaterThan(1);
+  });
+
+  it('falls back to another font when the chosen one lacks the glyph', () => {
+    const sajda = createMark({ element: 'sajda', shape: 'glyph', text: '۩', fontId: 'reem-kufi', size: 20 });
+    const geo = markGeometry(sajda);
+    expect(geo).not.toBeNull();
+    expect(geo!.fontId).not.toBeNull();
+  });
+
+  it('draws pen dots as rhombi', () => {
+    const three = createMark({ element: 'dot3', shape: 'dot3', text: '', size: 20 });
+    const geo = markGeometry(three)!;
+    expect(geo.d.match(/M/g)).toHaveLength(3);
+    expect(geo.fontId).toBeNull();
+  });
+
+  it('can draw every element of the catalogue', () => {
+    for (const def of ELEMENTS) {
+      const o = markFromElement(def, { fontId: 'amiri', size: 18, fill: { kind: 'solid', color: '#000000' } }, null, 0, 0);
+      expect(markGeometry(o), def.id).not.toBeNull();
+    }
   });
 });

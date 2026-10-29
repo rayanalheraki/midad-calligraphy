@@ -1,8 +1,8 @@
 {
-  "name": "kelk-web",
+  "name": "midad",
   "private": true,
   "version": "1.0.0",
-  "description": "كِلك ويب — محرر خط عربي يعمل في المتصفح (إعادة بناء ويب لفكرة برنامج Kelk 2010)",
+  "description": "مِداد — محرر للخط العربي يعمل بالكامل في المتصفح",
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1 --port 5173 --strictPort",

@@ -125,7 +125,7 @@ export async function loadFontFromBuffer(def: FontDef, data: ArrayBuffer): Promi
   const ext = font.hExtents();
   const gsub = new Set(face.getTableFeatureTags('GSUB'));
   const optionalFeatures = [...gsub].filter((t) => OPTIONAL_FEATURE_RE.test(t)).sort();
-  const cssFamily = 'kelkfont-' + def.id.replace(/[^a-z0-9-]/gi, '');
+  const cssFamily = 'midadfont-' + def.id.replace(/[^a-z0-9-]/gi, '');
   const loaded: LoadedFont = {
     def,
     hb,

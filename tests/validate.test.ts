@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { createDoc, createImage, createText } from '../src/model/defaults';
+import { createDoc, createImage, createMark, createText } from '../src/model/defaults';
+import { TEMPLATES } from '../src/model/templates';
+import { withAttached } from '../src/store/editor';
 import { validateDoc } from '../src/model/validate';
 
 describe('project validation', () => {
@@ -23,7 +25,7 @@ describe('project validation', () => {
 
   it('clamps numbers, sanitises colours and ignores unknown fields', () => {
     const raw = {
-      format: 'kelk-web',
+      format: 'midad',
       version: 1,
       title: 'x',
       pages: [
@@ -54,5 +56,45 @@ describe('project validation', () => {
 
   it('rejects non-project JSON', () => {
     expect(() => validateDoc({ hello: 1 })).toThrow();
+  });
+});
+
+describe('standalone elements in projects', () => {
+  it('keeps the link between an element and its line after ids are regenerated', () => {
+    const doc = createDoc();
+    const line = createText({ text: 'محمد' });
+    const mark = createMark({ element: 'fatha', shape: 'glyph', text: 'َ', ownerId: line.id });
+    const loose = createMark({ element: 'dot1', shape: 'dot1', text: '', ownerId: 'missing' });
+    doc.pages[0].objects.push(line, mark, loose);
+    const { doc: out } = validateDoc(JSON.parse(JSON.stringify(doc)));
+    const [l, m, d] = out.pages[0].objects as unknown as [{ id: string }, { ownerId: string | null }, { ownerId: string | null }];
+    expect(m.ownerId).toBe(l.id);
+    expect(d.ownerId).toBeNull();
+  });
+
+  it('takes the drawn text from the catalogue, not from the file', () => {
+    const raw = JSON.parse(JSON.stringify(createDoc()));
+    raw.pages[0].objects.push({ type: 'mark', element: 'fatha', shape: 'glyph', text: 'a very long injected string', size: 10 });
+    const { doc } = validateDoc(raw);
+    expect((doc.pages[0].objects[0] as { text: string }).text).toBe('َ');
+  });
+
+  it('every template is a valid document', () => {
+    for (const t of TEMPLATES) {
+      const doc = createDoc(t.name);
+      doc.pages = [t.build()];
+      const { warnings } = validateDoc(JSON.parse(JSON.stringify(doc)));
+      expect(warnings, t.id).toEqual([]);
+    }
+    expect(TEMPLATES[0].id).toBe('seal');
+  });
+});
+
+describe('element attachment', () => {
+  it('collects the elements attached to selected lines', () => {
+    const line = createText();
+    const m1 = createMark({ element: 'fatha', shape: 'glyph', text: 'َ', ownerId: line.id });
+    const m2 = createMark({ element: 'dot1', shape: 'dot1', text: '' });
+    expect(withAttached([line, m1, m2], [line.id]).sort()).toEqual([line.id, m1.id].sort());
   });
 });

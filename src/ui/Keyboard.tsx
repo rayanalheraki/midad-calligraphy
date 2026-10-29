@@ -3,7 +3,7 @@ import { insertIntoText } from './insertText';
 import { IconClose } from './icons';
 
 // Standard Arabic layout rows, plus Persian/Urdu letters and diacritics,
-// in the spirit of Kelk's customizable keyboard.
+// for typing without a physical Arabic layout.
 const ROWS: string[][] = [
   ['ذ', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩', '٠'],
   ['ض', 'ص', 'ث', 'ق', 'ف', 'غ', 'ع', 'ه', 'خ', 'ح', 'ج', 'د'],

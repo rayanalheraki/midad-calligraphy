@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { DocObject } from '../model/types';
-import { SHAPE_LABELS } from '../model/defaults';
+import { findElement } from '../model/elements';
 import { usePage, useEditor } from '../store/editor';
 import { Inspector } from './Inspector';
 import { IconDown, IconEye, IconLock, IconUp } from './icons';
@@ -9,23 +9,21 @@ function describe(o: DocObject): string {
   switch (o.type) {
     case 'text':
       return o.text.trim().slice(0, 28) || 'سطر فارغ';
-    case 'shape':
-      return SHAPE_LABELS[o.kind];
+    case 'mark':
+      return (findElement(o.element)?.label ?? o.name) + (o.ownerId ? ' (مرتبط)' : '');
     case 'image':
       return 'صورة';
-    case 'ink':
-      return 'خط القلم';
   }
 }
 
-const TYPE_LABEL: Record<DocObject['type'], string> = { text: 'سطر', shape: 'زخرفة', image: 'صورة', ink: 'قلم' };
+const TYPE_LABEL: Record<DocObject['type'], string> = { text: 'سطر', mark: 'عنصر', image: 'صورة' };
 
 function Layers() {
   const page = usePage();
   const selection = useEditor((s) => s.selection);
   const st = useEditor.getState();
   const items = [...page.objects].reverse();
-  if (!items.length) return <p className="empty">الصفحة فارغة. أضف سطرًا خطيًا أو زخرفة أو نموذجًا جاهزًا.</p>;
+  if (!items.length) return <p className="empty">الصفحة فارغة. أضف سطرًا خطيًا أو حركة أو نموذجًا جاهزًا.</p>;
   return (
     <ul className="layers" aria-label="عناصر الصفحة">
       {items.map((o) => (

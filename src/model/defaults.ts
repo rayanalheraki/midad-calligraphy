@@ -2,11 +2,9 @@ import type {
   Background,
   GlyphOverride,
   ImageObject,
-  InkObject,
-  KelkDoc,
+  MidadDoc,
   Page,
-  ShapeKind,
-  ShapeObject,
+  MarkObject,
   TextObject,
 } from './types';
 
@@ -39,9 +37,9 @@ export function createPage(w = 210, h = 297, name = 'صفحة'): Page {
   return { id: uid('p'), name, width: w, height: h, background: defaultBackground(), objects: [] };
 }
 
-export function createDoc(title = 'عمل جديد'): KelkDoc {
+export function createDoc(title = 'عمل جديد'): MidadDoc {
   const now = new Date().toISOString();
-  return { format: 'kelk-web', version: 1, title, pages: [createPage()], meta: { created: now, modified: now } };
+  return { format: 'midad', version: 1, title, pages: [createPage()], meta: { created: now, modified: now } };
 }
 
 export function defaultGlyphOverride(): GlyphOverride {
@@ -83,48 +81,6 @@ export function createText(partial: Partial<TextObject> = {}): TextObject {
   };
 }
 
-export const SHAPE_LABELS: Record<ShapeKind, string> = {
-  frame: 'إطار بسيط',
-  doubleFrame: 'إطار مزدوج',
-  ornateFrame: 'إطار مزخرف',
-  roundFrame: 'إطار مستدير الزوايا',
-  arch: 'محراب',
-  circle: 'دائرة',
-  medallion: 'شمسة',
-  rosette: 'وردة',
-  star: 'نجمة',
-  khatam: 'نجمة ثمانية (خاتم)',
-  divider: 'فاصل مزخرف',
-  rhombus: 'نقطة القلم',
-};
-
-export function createShape(kind: ShapeKind, partial: Partial<ShapeObject> = {}): ShapeObject {
-  const square = ['circle', 'medallion', 'rosette', 'star', 'khatam', 'rhombus'].includes(kind);
-  const isFrame = ['frame', 'doubleFrame', 'ornateFrame', 'roundFrame', 'arch'].includes(kind);
-  return {
-    id: uid('s'),
-    type: 'shape',
-    name: SHAPE_LABELS[kind],
-    kind,
-    x: 105,
-    y: 148,
-    rotation: 0,
-    scaleX: 1,
-    scaleY: 1,
-    opacity: 1,
-    locked: false,
-    hidden: false,
-    w: kind === 'divider' ? 120 : kind === 'rhombus' ? 6 : square ? 70 : 170,
-    h: kind === 'divider' ? 10 : kind === 'rhombus' ? 6 : square ? 70 : kind === 'arch' ? 200 : 240,
-    points: kind === 'star' ? 12 : kind === 'rosette' ? 16 : 24,
-    inner: kind === 'star' ? 0.62 : 0.5,
-    fill: isFrame || kind === 'divider' ? null : kind === 'rhombus' ? { kind: 'solid', color: '#1b1e27' } : { kind: 'gold' },
-    stroke: kind === 'rhombus' ? null : { color: '#1f3a73', width: isFrame ? 1.2 : 0.6 },
-    shadow: null,
-    ...partial,
-  };
-}
-
 export function createImage(src: string, w: number, h: number, partial: Partial<ImageObject> = {}): ImageObject {
   return {
     id: uid('i'),
@@ -145,20 +101,23 @@ export function createImage(src: string, w: number, h: number, partial: Partial<
   };
 }
 
-export function createInk(d: string, color: string, x: number, y: number): InkObject {
+export function createMark(partial: Partial<MarkObject> & Pick<MarkObject, 'element' | 'shape' | 'text'>): MarkObject {
   return {
-    id: uid('k'),
-    type: 'ink',
-    name: 'خط القلم',
-    x,
-    y,
+    id: uid('m'),
+    type: 'mark',
+    name: 'عنصر',
+    x: 105,
+    y: 148,
     rotation: 0,
     scaleX: 1,
     scaleY: 1,
     opacity: 1,
     locked: false,
     hidden: false,
-    d,
-    color,
+    fontId: 'amiri',
+    size: 18,
+    fill: { kind: 'solid', color: '#1b1e27' },
+    ownerId: null,
+    ...partial,
   };
 }

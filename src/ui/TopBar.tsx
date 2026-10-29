@@ -1,13 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
-import { SHAPE_LABELS } from '../model/defaults';
-import type { ShapeKind } from '../model/types';
 import { getLoadedFont } from '../engine/fonts';
 import { useEditor } from '../store/editor';
 import { useFonts } from '../store/fonts';
 import {
   importKlxFile,
   insertImage,
-  insertShape,
   insertTextLine,
   newDocument,
   openProjectFile,
@@ -100,14 +97,12 @@ export function TopBar() {
     };
   }, [open]);
 
-  const shapes = (Object.keys(SHAPE_LABELS) as ShapeKind[]).map((k) => ({ label: SHAPE_LABELS[k], onClick: () => insertShape(k) }));
-
   return (
     <header className="topbar">
-      <div className="brand" aria-label="كِلك ويب">
+      <div className="brand" aria-label="مِداد">
         <span className="brand-mark" aria-hidden="true" />
         <span className="brand-name" style={brandFont ? { fontFamily: `"${brandFont.cssFamily}", var(--font-ui)` } : undefined}>
-          كِلك
+          مِداد
         </span>
       </div>
       <nav className="menubar" ref={ref} aria-label="القوائم">
@@ -119,7 +114,7 @@ export function TopBar() {
           items={[
             { label: 'عمل جديد', shortcut: 'Ctrl+Alt+N', onClick: newDocument },
             { label: 'فتح مشروع…', shortcut: 'Ctrl+O', onClick: () => openProjectFile() },
-            { label: 'استيراد مستند كِلك (KLX)…', onClick: () => importKlxFile() },
+            { label: 'استيراد ملف KLX…', onClick: () => importKlxFile() },
             { separator: true },
             { label: 'حفظ في أعمالي', shortcut: 'Ctrl+S', onClick: saveToWorks },
             { label: 'تنزيل ملف المشروع', shortcut: 'Ctrl+Shift+S', onClick: saveProjectFile },
@@ -173,7 +168,11 @@ export function TopBar() {
           label="إدراج"
           open={open}
           setOpen={setOpen}
-          items={[{ label: 'سطر خطي', shortcut: 'T', onClick: insertTextLine }, { label: 'صورة…', onClick: () => insertImage() }, { separator: true }, ...shapes]}
+          items={[
+            { label: 'سطر خطي', shortcut: 'T', onClick: insertTextLine },
+            { label: 'حركة أو عنصر منفصل…', shortcut: 'M', onClick: () => st.setTool('mark') },
+            { label: 'صورة…', onClick: () => insertImage() },
+          ]}
         />
         <MenuButton
           id="page"
@@ -197,7 +196,7 @@ export function TopBar() {
             { label: 'خطوطي…', onClick: () => st.setDialog('fonts') },
             { label: 'اختصارات لوحة المفاتيح', onClick: () => st.setDialog('shortcuts') },
             { separator: true },
-            { label: 'عن كِلك ويب والأمان', onClick: () => st.setDialog('about') },
+            { label: 'عن مِداد والأمان', onClick: () => st.setDialog('about') },
           ]}
         />
       </nav>

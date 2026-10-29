@@ -160,7 +160,7 @@ export function computeTextGeometry(obj: TextObject, lf: LoadedFont): TextGeomet
   }
   if (isEmptyRect(baseBox)) baseBox = { minX: -obj.size, minY: -obj.size, maxX: obj.size, maxY: obj.size * 0.4 };
 
-  // Copies: rotational repeat (Kelk's "virtual repeat") then mirror (musanna).
+  // Copies: rotational repeat then mirror (musanna).
   let copies: Matrix[] = [IDENTITY];
   const count = Math.max(1, Math.min(72, Math.round(obj.repeat.count)));
   if (count > 1) {

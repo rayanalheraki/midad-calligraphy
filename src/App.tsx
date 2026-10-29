@@ -3,7 +3,7 @@ import type { Draft } from 'immer';
 import type { TextObject } from './model/types';
 import { createDoc } from './model/defaults';
 import { TEMPLATES } from './model/templates';
-import { useEditor } from './store/editor';
+import { useEditor, withAttached } from './store/editor';
 import { useFonts } from './store/fonts';
 import { idbGet, idbPut } from './io/storage';
 import { parseProject, serializeDoc } from './io/project';
@@ -15,6 +15,9 @@ import { StatusBar } from './ui/StatusBar';
 import { KeyboardPanel } from './ui/Keyboard';
 import { Dialogs, Toasts } from './ui/Dialogs';
 import { handleDroppedFiles, newDocument, openProjectFile, printDocument, saveProjectFile, saveToWorks } from './ui/actions';
+
+// Bumped when the document format changes, so stale sessions are not restored.
+const AUTOSAVE_KEY = 'session-v2';
 
 function isTyping(): boolean {
   const el = document.activeElement as HTMLElement | null;
@@ -39,9 +42,10 @@ function nudge(dx: number, dy: number) {
     return;
   }
   if (!st.selection.length) return;
+  const ids = new Set(withAttached(st.doc.pages[st.pageIndex].objects, st.selection));
   st.commit((d) => {
     for (const o of d.pages[st.pageIndex].objects) {
-      if (st.selection.includes(o.id) && !o.locked) {
+      if (ids.has(o.id) && !o.locked) {
         o.x += dx;
         o.y += dy;
       }
@@ -58,7 +62,7 @@ export function App() {
     void useFonts.getState().request('aref-ruqaa-bold');
     void (async () => {
       await useFonts.getState().loadUserFonts();
-      const saved = await idbGet<string>('autosave', 'current').catch(() => undefined);
+      const saved = await idbGet<string>('autosave', AUTOSAVE_KEY).catch(() => undefined);
       if (typeof saved === 'string') {
         try {
           useEditor.getState().loadDoc(parseProject(saved).doc);
@@ -67,8 +71,10 @@ export function App() {
           // fall through to a fresh document
         }
       }
-      const doc = createDoc('بسملة');
-      doc.pages = [TEMPLATES[0].build()];
+      // First visit: open on the circular seal composition.
+      const seal = TEMPLATES.find((t) => t.id === 'seal') ?? TEMPLATES[0];
+      const doc = createDoc(seal.name);
+      doc.pages = [seal.build()];
       useEditor.getState().loadDoc(doc);
     })();
   }, []);
@@ -79,7 +85,7 @@ export function App() {
     const unsub = useEditor.subscribe((s, prev) => {
       if (s.doc === prev.doc) return;
       clearTimeout(timer);
-      timer = setTimeout(() => void idbPut('autosave', 'current', serializeDoc(useEditor.getState().doc)).catch(() => undefined), 1200);
+      timer = setTimeout(() => void idbPut('autosave', AUTOSAVE_KEY, serializeDoc(useEditor.getState().doc)).catch(() => undefined), 1200);
     });
     return () => {
       unsub();
@@ -175,7 +181,7 @@ export function App() {
           } else st.removeSelected();
           return;
         case 'Escape':
-          if (st.tool === 'glyph') st.setTool('select');
+          if (st.tool === 'glyph' || st.tool === 'mark') st.setTool('select');
           else st.select([]);
           return;
         case 'ArrowLeft':
@@ -203,8 +209,8 @@ export function App() {
         case 'KeyT':
           st.setTool('text');
           return;
-        case 'KeyP':
-          st.setTool('pen');
+        case 'KeyM':
+          st.setTool('mark');
           return;
         case 'KeyH':
           st.setTool('hand');
@@ -236,7 +242,7 @@ export function App() {
         <ToolRail />
         <main className="canvas-area">
           <Stage />
-          {dragging && <div className="drop-hint">أفلت الملف هنا: مشروع كِلك ويب أو مستند KLX أو صورة</div>}
+          {dragging && <div className="drop-hint">أفلت الملف هنا: مشروع مِداد أو ملف KLX أو صورة</div>}
         </main>
         <SidePanel />
       </div>

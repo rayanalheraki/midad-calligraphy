@@ -1,12 +1,12 @@
 import { useEffect, useRef } from 'react';
 import type { Draft } from 'immer';
-import type { DocObject, Fill, ImageObject, InkObject, Page, ShapeKind, ShapeObject, TextObject } from '../model/types';
-import { defaultGlyphOverride, PAGE_SIZES, SHAPE_LABELS } from '../model/defaults';
+import type { DocObject, Fill, ImageObject, MarkObject, Page, TextObject } from '../model/types';
+import { defaultGlyphOverride, PAGE_SIZES } from '../model/defaults';
+import { findElement } from '../model/elements';
 import { applyTextEdit } from '../model/textEdit';
 import { featureLabel, findFontDef, getLoadedFont } from '../engine/fonts';
 import { kashidaSlots, textGeometry } from '../engine/layout';
 import { emptyRect, unionRect } from '../engine/geom';
-import { reedPenStroke } from '../engine/pen';
 import { PATTERN_LABELS } from '../engine/patterns';
 import { worldBox } from '../render/bounds';
 import { pickFile, readImageFile } from '../io/images';
@@ -15,6 +15,7 @@ import { useFonts } from '../store/fonts';
 import { ColorInput, FillEditor, NumberInput, Row, Section, Segmented, SliderNumber, Toggle } from './controls';
 import { FontPicker } from './FontPicker';
 import { MarksPalette } from './MarksPalette';
+import { ElementsPalette } from './ElementsPalette';
 import { rememberTextStyle, textCaret } from './textDefaults';
 import { IconCopy, IconKeyboard, IconTrash } from './icons';
 
@@ -102,11 +103,11 @@ function TextSection({ o }: { o: TextObject }) {
         el.setSelectionRange(textCaret.start, textCaret.end);
       });
     };
-    window.addEventListener('kelk:focus-text', focus);
-    window.addEventListener('kelk:caret', caret);
+    window.addEventListener('midad:focus-text', focus);
+    window.addEventListener('midad:caret', caret);
     return () => {
-      window.removeEventListener('kelk:focus-text', focus);
-      window.removeEventListener('kelk:caret', caret);
+      window.removeEventListener('midad:focus-text', focus);
+      window.removeEventListener('midad:caret', caret);
     };
   }, [o.id]);
 
@@ -152,10 +153,14 @@ function TextSection({ o }: { o: TextObject }) {
             تحرير الحروف
           </button>
         </div>
-        <details className="sub">
-          <summary>الحركات والرموز</summary>
-          <MarksPalette />
-        </details>
+      </Section>
+
+      <Section title="حركات داخل النص" open={false}>
+        <p className="note">تُدرج الحركة عند مؤشّر الكتابة في مربّع النص أعلاه، فيضعها الخط تلقائيًّا فوق الحرف.</p>
+        <MarksPalette />
+        <button type="button" onClick={() => useEditor.getState().startElement('fatha')}>
+          وضع الحركات كعناصر منفصلة…
+        </button>
       </Section>
 
       <Section title="الخط والحجم">
@@ -333,7 +338,7 @@ function TextSection({ o }: { o: TextObject }) {
   );
 }
 
-function ShadowControls({ o }: { o: TextObject | ShapeObject }) {
+function ShadowControls({ o }: { o: TextObject }) {
   const { live, commit } = ops(o.id);
   return (
     <>
@@ -423,58 +428,6 @@ function GlyphSection({ o, keys }: { o: TextObject; keys: string[] }) {
   );
 }
 
-const SHAPE_KINDS = Object.keys(SHAPE_LABELS) as ShapeKind[];
-
-function ShapeSection({ o }: { o: ShapeObject }) {
-  const { live, commit } = ops(o.id);
-  const hasPoints = o.kind === 'star' || o.kind === 'rosette' || o.kind === 'medallion';
-  return (
-    <>
-      <Section title="الزخرفة">
-        <Row label="النوع">
-          <select value={o.kind} onChange={(e) => commit((d) => void ((d as ShapeObject).kind = e.target.value as ShapeKind))}>
-            {SHAPE_KINDS.map((k) => (
-              <option key={k} value={k}>
-                {SHAPE_LABELS[k]}
-              </option>
-            ))}
-          </select>
-        </Row>
-        <div className="grid2">
-          <Row label="العرض">
-            <NumberInput label="العرض" value={o.w} min={0.5} max={5000} unit="مم" onChange={(v) => live((d) => void ((d as ShapeObject).w = v))} />
-          </Row>
-          <Row label="الارتفاع">
-            <NumberInput label="الارتفاع" value={o.h} min={0.5} max={5000} unit="مم" onChange={(v) => live((d) => void ((d as ShapeObject).h = v))} />
-          </Row>
-        </div>
-        {hasPoints && (
-          <Row label={o.kind === 'star' ? 'عدد الرؤوس' : 'عدد البتلات'}>
-            <SliderNumber label="عدد الرؤوس" value={o.points} min={3} max={48} onChange={(v) => live((d) => void ((d as ShapeObject).points = Math.round(v)))} />
-          </Row>
-        )}
-        {(o.kind === 'star' || o.kind === 'ornateFrame') && (
-          <Row label={o.kind === 'star' ? 'عمق النجمة' : 'كثافة الزخرفة'}>
-            <SliderNumber label="النسبة" value={Math.round(o.inner * 100)} min={10} max={95} unit="٪" onChange={(v) => live((d) => void ((d as ShapeObject).inner = v / 100))} />
-          </Row>
-        )}
-      </Section>
-      <Section title="الألوان" open={false}>
-        <Toggle label="تعبئة" checked={!!o.fill} onChange={(v) => commit((d) => void ((d as ShapeObject).fill = v ? { kind: 'gold' } : null))} />
-        {o.fill && <FillEditor fill={o.fill} onCommit={(f: Fill) => commit((d) => void ((d as ShapeObject).fill = f))} onLive={(f: Fill) => live((d) => void ((d as ShapeObject).fill = f))} />}
-        <Toggle label="خط محيط" checked={!!o.stroke} onChange={(v) => commit((d) => void ((d as ShapeObject).stroke = v ? { color: '#1f3a73', width: 0.8 } : null))} />
-        {o.stroke && (
-          <div className="grid2">
-            <ColorInput label="لون الخط" value={o.stroke.color} onChange={(c) => live((d) => void ((d as ShapeObject).stroke!.color = c))} />
-            <NumberInput label="سماكة الخط" value={o.stroke.width} min={0} max={30} step={0.1} unit="مم" onChange={(v) => live((d) => void ((d as ShapeObject).stroke!.width = v))} />
-          </div>
-        )}
-        <ShadowControls o={o} />
-      </Section>
-    </>
-  );
-}
-
 function ImageSection({ o }: { o: ImageObject }) {
   const { live, commit } = ops(o.id);
   const ratio = o.h / o.w;
@@ -507,15 +460,6 @@ function ImageSection({ o }: { o: ImageObject }) {
       >
         استبدال الصورة…
       </button>
-    </Section>
-  );
-}
-
-function InkSection({ o }: { o: InkObject }) {
-  const { live } = ops(o.id);
-  return (
-    <Section title="خط القلم">
-      <ColorInput label="لون الحبر" value={o.color} onChange={(c) => live((d) => void ((d as InkObject).color = c))} />
     </Section>
   );
 }
@@ -727,32 +671,66 @@ function PageSection({ page }: { page: Page }) {
   );
 }
 
-function PenSection() {
-  const pen = useEditor((s) => s.pen);
-  const set = useEditor.getState().setPen;
-  const sample = reedPenStroke(
-    Array.from({ length: 40 }, (_, i) => {
-      const t = i / 39;
-      return { x: 6 + t * 88, y: 22 + Math.sin(t * Math.PI * 2) * 12, p: 1 };
-    }),
-    pen.width * 2.2,
-    pen.angle,
-    false,
-  ).d;
+/** Shown while the element tool is active: the palette and where the next element goes. */
+function ElementsSection() {
+  const owner = useEditor((s) => {
+    const page = s.doc.pages[s.pageIndex];
+    const o = page.objects.find((x) => x.id === s.elementOwner);
+    return o?.type === 'text' ? o : null;
+  });
   return (
-    <Section title="قلم القصب">
-      <svg className="pen-sample" viewBox="0 0 100 44" aria-hidden="true">
-        <path d={sample} fill={pen.color} />
-      </svg>
-      <p className="note">يحاكي قلم القصب المبريّ: يغلظ الخط حين تتحرك عموديًا على سنّ القلم ويرقّ حين تتحرك موازيًا له.</p>
-      <Row label="عرض السنّ">
-        <SliderNumber label="عرض سن القلم" value={pen.width} min={0.5} max={20} step={0.1} unit="مم" onChange={(width) => set({ width })} />
+    <>
+      <p className="hint-card">
+        اختر حركة أو عنصرًا، ثم انقر في الصفحة لوضعه. يبقى العنصر جاهزًا لتضعه أكثر من مرة؛ اضغط Esc أو اختر أداة التحديد للخروج.
+      </p>
+      <Section title="التشكيل والعناصر">
+        {owner ? (
+          <p className="note">
+            ستُربط العناصر بالسطر «{owner.text.trim().slice(0, 24)}» وتأخذ خطّه وحجمه ولونه، وتتحرك معه.
+          </p>
+        ) : (
+          <p className="note">لا يوجد سطر محدد، فستوضع العناصر مستقلة. لربطها بسطر، حدّده أولًا ثم اختر هذه الأداة.</p>
+        )}
+        <ElementsPalette />
+      </Section>
+    </>
+  );
+}
+
+function MarkSection({ o }: { o: MarkObject }) {
+  const { live, commit } = ops(o.id);
+  const def = findElement(o.element);
+  const owner = useEditor((s) => {
+    const page = s.doc.pages[s.pageIndex];
+    const t = page.objects.find((x) => x.id === o.ownerId);
+    return t?.type === 'text' ? t : null;
+  });
+  return (
+    <Section title={`عنصر: ${def?.label ?? o.name}`}>
+      {o.shape === 'glyph' && (
+        <FontPicker value={o.fontId} onChange={(fontId) => commit((d) => void ((d as MarkObject).fontId = fontId))} />
+      )}
+      <Row label="الحجم">
+        <SliderNumber label="حجم العنصر" value={o.size} min={1} max={150} step={0.5} unit="مم" onChange={(v) => live((d) => void ((d as MarkObject).size = v))} />
       </Row>
-      <Row label="زاوية القلم">
-        <SliderNumber label="زاوية القلم" value={pen.angle} min={0} max={90} unit="°" onChange={(angle) => set({ angle })} />
-      </Row>
-      <ColorInput label="لون الحبر" value={pen.color} onChange={(color) => set({ color })} />
-      <Toggle label="تأثّر بضغط القلم الرقمي" checked={pen.pressure} onChange={(pressure) => set({ pressure })} />
+      <FillEditor
+        fill={o.fill}
+        onCommit={(f: Fill) => commit((d) => void ((d as MarkObject).fill = f))}
+        onLive={(f: Fill) => live((d) => void ((d as MarkObject).fill = f))}
+      />
+      {owner ? (
+        <Row label="مرتبط بسطر">
+          <span className="muted">«{owner.text.trim().slice(0, 18)}»</span>
+          <button type="button" className="link" onClick={() => commit((d) => void ((d as MarkObject).ownerId = null))}>
+            فك الارتباط
+          </button>
+        </Row>
+      ) : (
+        <p className="note">عنصر مستقل غير مرتبط بأي سطر.</p>
+      )}
+      <button type="button" onClick={() => useEditor.getState().startElement(o.element)}>
+        إضافة المزيد من هذا العنصر
+      </button>
     </Section>
   );
 }
@@ -765,7 +743,7 @@ export function Inspector() {
   useFonts((s) => s.version);
 
   let body;
-  if (tool === 'pen') body = <PenSection />;
+  if (tool === 'mark') body = <ElementsSection />;
   else if (selected.length === 0) body = <PageSection page={page} />;
   else if (selected.length > 1) body = <MultiSection objects={selected} />;
   else {
@@ -777,9 +755,8 @@ export function Inspector() {
           <p className="hint-card">انقر حرفًا أو نقطة أو حركة لتحديدها، ثم اسحبها لتغيير موضعها. استخدم Shift لتحديد أكثر من جزء، وEsc للخروج من وضع تحرير الحروف.</p>
         )}
         {o.type === 'text' && <TextSection o={o} />}
-        {o.type === 'shape' && <ShapeSection o={o} />}
+        {o.type === 'mark' && <MarkSection o={o} />}
         {o.type === 'image' && <ImageSection o={o} />}
-        {o.type === 'ink' && <InkSection o={o} />}
         <TransformSection o={o} />
         <ObjectActions o={o} />
       </>

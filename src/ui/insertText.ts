@@ -34,5 +34,5 @@ export function insertIntoText(str: string | null): void {
   st.updateObject(obj.id, (o) => applyTextEdit(o as Draft<TextObject>, next));
   textCaret.objectId = obj.id;
   textCaret.start = textCaret.end = caret;
-  window.dispatchEvent(new CustomEvent('kelk:caret'));
+  window.dispatchEvent(new CustomEvent('midad:caret'));
 }

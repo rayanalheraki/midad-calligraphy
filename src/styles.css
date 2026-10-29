@@ -1,4 +1,4 @@
-/* Kelk Web — lapis and illumination gold, taken from Islamic manuscript illumination.
+/* Midad — lapis and illumination gold, taken from Islamic manuscript illumination.
    Gold is reserved for selection and active states; the page stays the brightest surface. */
 :root {
   --lapis: #1f3a73;
@@ -122,8 +122,7 @@ textarea {
   color: #fff;
 }
 
-.menu-list,
-.rail-menu {
+.menu-list {
   position: absolute;
   min-width: 250px;
   background: var(--surface);
@@ -140,8 +139,7 @@ textarea {
   inset-inline-start: 0;
 }
 
-.menu-list button,
-.rail-menu button {
+.menu-list button {
   display: grid;
   grid-template-columns: 14px 1fr auto;
   align-items: center;
@@ -155,12 +153,7 @@ textarea {
   cursor: pointer;
 }
 
-.rail-menu button {
-  grid-template-columns: 1fr;
-}
-
-.menu-list button:hover:not(:disabled),
-.rail-menu button:hover {
+.menu-list button:hover:not(:disabled) {
   background: var(--lapis-soft);
   color: var(--lapis-ink);
 }
@@ -317,16 +310,6 @@ textarea {
   height: 1px;
   background: var(--line);
   margin: 6px 0;
-}
-
-.rail-pop {
-  position: relative;
-}
-
-.rail-menu {
-  top: 0;
-  inset-inline-start: calc(100% + 10px);
-  min-width: 200px;
 }
 
 .canvas-area {
@@ -796,7 +779,7 @@ select,
   outline-offset: 2px;
 }
 
-.inspector button:not(.chip, .font-current, .font-item, .font-add, .mark-btn, .mini, .link, .segmented button) {
+.inspector button:not(.chip, .font-current, .font-item, .font-add, .mark-btn, .element-btn, .mini, .link, .segmented button) {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -810,7 +793,7 @@ select,
   cursor: pointer;
 }
 
-.inspector button:not(.chip, .font-current, .font-item, .font-add, .mark-btn, .mini, .link, .segmented button):hover {
+.inspector button:not(.chip, .font-current, .font-item, .font-add, .mark-btn, .element-btn, .mini, .link, .segmented button):hover {
   border-color: var(--lapis);
   color: var(--lapis);
 }
@@ -979,14 +962,6 @@ details.sub > summary {
   height: 28px;
   border: 1px solid var(--line);
   border-radius: var(--r-sm);
-}
-
-.pen-sample {
-  width: 100%;
-  height: 76px;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
 }
 
 /* font picker */
@@ -1643,4 +1618,51 @@ kbd {
     transition: none !important;
     animation: none !important;
   }
+}
+
+/* ---------- Standalone elements palette ---------- */
+.elements {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.elements-group {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.elements-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 4px;
+}
+
+.element-btn {
+  display: grid;
+  place-items: center;
+  height: 44px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.element-btn:hover {
+  border-color: var(--gold);
+  background: var(--gold-soft);
+}
+
+.element-btn.on {
+  border-color: var(--lapis);
+  background: var(--lapis);
+  color: #fff;
+}
+
+.element-glyph {
+  font-size: 24px;
+  line-height: 1;
 }

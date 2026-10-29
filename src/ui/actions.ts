@@ -1,5 +1,4 @@
-import { createDoc, createImage, createShape, createText, uid } from '../model/defaults';
-import type { ShapeKind } from '../model/types';
+import { createDoc, createImage, createText, uid } from '../model/defaults';
 import { TEMPLATES } from '../model/templates';
 import { useEditor } from '../store/editor';
 import { downloadProject, readProjectFile, serializeDoc } from '../io/project';
@@ -20,7 +19,7 @@ export function newDocument() {
 }
 
 export async function openProjectFile(file?: File | null) {
-  const f = file ?? (await pickFile('.json,.kelk,application/json'));
+  const f = file ?? (await pickFile('.json,.midad,application/json'));
   if (!f) return;
   try {
     const { doc, warnings } = await readProjectFile(f);
@@ -41,7 +40,7 @@ export async function importKlxFile(file?: File | null) {
     st().loadDoc(doc);
     st().setImportReport(report);
   } catch (e) {
-    st().toast(e instanceof KlxError ? 'تعذّر قراءة ملف كِلك: ' + e.message : errorText(e), 'error');
+    st().toast(e instanceof KlxError ? 'تعذّر قراءة ملف KLX: ' + e.message : errorText(e), 'error');
   }
 }
 
@@ -80,18 +79,7 @@ export function insertTextLine() {
   const s = st();
   const page = s.doc.pages[s.pageIndex];
   s.addObject(createText({ ...lastTextStyle, x: page.width / 2, y: page.height / 2, text: 'اكتب نصّك هنا' }));
-  window.dispatchEvent(new CustomEvent('kelk:focus-text'));
-}
-
-export function insertShape(kind: ShapeKind) {
-  const s = st();
-  const page = s.doc.pages[s.pageIndex];
-  const shape = createShape(kind, { x: page.width / 2, y: page.height / 2 });
-  if (['frame', 'doubleFrame', 'ornateFrame', 'roundFrame'].includes(kind)) {
-    shape.w = page.width - 20;
-    shape.h = page.height - 20;
-  }
-  s.addObject(shape);
+  window.dispatchEvent(new CustomEvent('midad:focus-text'));
 }
 
 /** Inserts an image file as a new object, sized to fit the page. */
@@ -140,13 +128,13 @@ export async function printDocument() {
   }
 }
 
-/** Files dropped on the window: projects, Kelk documents or images. */
+/** Files dropped on the window: projects, KLX files or images. */
 export async function handleDroppedFiles(files: FileList) {
   const f = files[0];
   if (!f) return;
   const name = f.name.toLowerCase();
   if (name.endsWith('.klx')) return importKlxFile(f);
-  if (name.endsWith('.json') || name.endsWith('.kelk')) return openProjectFile(f);
+  if (name.endsWith('.json') || name.endsWith('.midad')) return openProjectFile(f);
   if (f.type.startsWith('image/')) return insertImage(f);
   st().toast('نوع الملف غير مدعوم. اسحب مشروعًا أو ملف KLX أو صورة.', 'error');
 }

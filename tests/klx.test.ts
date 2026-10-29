@@ -2,29 +2,29 @@ import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { KlxError, parseKlxBag, readKlxDocument, vbColor } from '../src/io/klx';
-import { decodeKelkString, encodeKelkBytes, unicodeToSina } from '../src/io/sina';
+import { decodeKlxString, encodeKlxBytes, unicodeToLegacy } from '../src/io/klxText';
 import { klxFile } from './helpers';
 
-const enc = (s: string) => encodeKelkBytes(unicodeToSina(s));
+const enc = (s: string) => encodeKlxBytes(unicodeToLegacy(s));
 
-describe('Kelk string decoding', () => {
-  it('decodes the $*&! layout through the Sina code page', () => {
-    // Real value taken from a Kelk 2007 sample document.
-    expect(decodeKelkString('$*&!bpcjcgphdnchchbhphdnchdiamcgcfphdnchdiambgcgph')).toBe('بسم الله الرحمن الرحيم ');
+describe('KLX string decoding', () => {
+  it('decodes the $*&! layout through the legacy code page', () => {
+    // Real value taken from a KLX sample document.
+    expect(decodeKlxString('$*&!bpcjcgphdnchchbhphdnchdiamcgcfphdnchdiambgcgph')).toBe('بسم الله الرحمن الرحيم ');
   });
 
   it('round-trips Arabic and Persian letters', () => {
-    for (const s of ['الحمد لله رب العالمين', 'پرچم گچ ژاله', 'كلك']) {
-      expect(decodeKelkString(enc(s))).toBe(s);
+    for (const s of ['الحمد لله رب العالمين', 'پرچم گچ ژاله', 'قلم']) {
+      expect(decodeKlxString(enc(s))).toBe(s);
     }
   });
 
   it('treats a doubly encoded empty string as empty', () => {
-    expect(decodeKelkString('$*&!ohnfofpg')).toBe('');
+    expect(decodeKlxString('$*&!ohnfofpg')).toBe('');
   });
 
   it('leaves plain strings untouched', () => {
-    expect(decodeKelkString('plain')).toBe('plain');
+    expect(decodeKlxString('plain')).toBe('plain');
   });
 });
 
@@ -81,7 +81,7 @@ describe('KLX parser', () => {
   });
 
   it('rejects files that are not KLX', () => {
-    expect(() => parseKlxBag(new TextEncoder().encode('<html>not a kelk file</html>').buffer)).toThrow(KlxError);
+    expect(() => parseKlxBag(new TextEncoder().encode('<html>not a klx file</html>').buffer)).toThrow(KlxError);
   });
 
   it('survives truncated and corrupted input without throwing unexpected errors', () => {
@@ -108,9 +108,9 @@ describe('KLX parser', () => {
   });
 });
 
-// Optional check against the original Kelk sample documents, when they are available locally.
-const SAMPLES = process.env.KELK_SAMPLES;
-describe.runIf(!!SAMPLES && existsSync(SAMPLES))('original Kelk samples', () => {
+// Optional check against real KLX sample documents, when they are available locally.
+const SAMPLES = process.env.KLX_SAMPLES;
+describe.runIf(!!SAMPLES && existsSync(SAMPLES))('real KLX samples', () => {
   const files: string[] = [];
   const walk = (dir: string) => {
     for (const name of readdirSync(dir)) {

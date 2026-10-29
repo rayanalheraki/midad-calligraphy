@@ -164,7 +164,7 @@ export const MAX_KASHIDA_PER_SLOT = 24;
 /**
  * Builds the kashida counts for a line:
  * - `level` tatweels at the best slot of every word,
- * - plus manual counts keyed by the letter index (Kelk's per-letter kashida tool).
+ * - plus manual counts keyed by the letter index (the per-letter kashida tool).
  */
 export function kashidaCounts(text: string, level: number, manual: Record<string, number>): Map<number, number> {
   const slots = kashidaSlots(text);

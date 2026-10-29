@@ -1,5 +1,5 @@
 // Local persistence in IndexedDB. Nothing leaves the browser.
-const DB_NAME = 'kelk-web';
+const DB_NAME = 'midad';
 const DB_VERSION = 1;
 const STORES = ['autosave', 'works', 'fonts'] as const;
 type StoreName = (typeof STORES)[number];

@@ -4,12 +4,17 @@ import type { Page } from '../model/types';
 import { ensureFont } from '../engine/fontLoader';
 import { fmt, type Rect } from '../engine/geom';
 import { PageContent } from '../render/PageView';
+import { markFontIds } from '../engine/marks';
 
 export type MirrorExport = 'none' | 'h' | 'v' | 'both';
 
 export async function ensurePageFonts(pages: Page[]): Promise<void> {
   const ids = new Set<string>();
-  for (const p of pages) for (const o of p.objects) if (o.type === 'text') ids.add(o.fontId);
+  for (const p of pages)
+    for (const o of p.objects) {
+      if (o.type === 'text') ids.add(o.fontId);
+      else if (o.type === 'mark') markFontIds(o).forEach((id) => ids.add(id));
+    }
   await Promise.all([...ids].map((id) => ensureFont(id).catch(() => undefined)));
 }
 
@@ -37,7 +42,7 @@ export function pageSvgString(page: Page, opts: SvgOptions = {}): { svg: string;
     `<?xml version="1.0" encoding="UTF-8"?>\n` +
     `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1" ` +
     `width="${fmt(w)}mm" height="${fmt(h)}mm" viewBox="${fmt(crop.minX)} ${fmt(crop.minY)} ${fmt(w)} ${fmt(h)}">` +
-    `<title>Kelk Web</title>${content}</svg>`;
+    `<title>Midad</title>${content}</svg>`;
   return { svg, width: w, height: h };
 }
 
@@ -96,7 +101,7 @@ export function downloadBlob(blob: Blob, filename: string): void {
 
 export function safeFileName(title: string): string {
   const cleaned = title.replace(/[\\/:*?"<>|\u0000-\u001f]+/g, ' ').trim().slice(0, 80);
-  return cleaned || 'kelk';
+  return cleaned || 'midad';
 }
 
 /** Prints the pages through the browser dialog; "Save as PDF" there produces a vector PDF. */

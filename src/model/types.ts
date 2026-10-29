@@ -34,7 +34,7 @@ interface BaseObject extends Transform {
   hidden: boolean;
 }
 
-/** Manual adjustment of one glyph (letter, dot group or diacritic), like Kelk's per-letter editing. */
+/** Manual adjustment of one glyph (letter, dot group or diacritic), edited by hand. */
 export interface GlyphOverride {
   dx: number;
   dy: number;
@@ -59,7 +59,7 @@ export interface TextPath {
   flip: boolean;
 }
 
-/** Rotational repetition of a baseline, from Kelk's lrepeatcount/lrepeatangle. */
+/** Rotational repetition of a baseline around a centre point. */
 export interface Repeat {
   count: number;
   angle: number;
@@ -97,32 +97,26 @@ export interface TextObject extends BaseObject {
   glyphs: Record<string, GlyphOverride>;
 }
 
-export type ShapeKind =
-  | 'frame'
-  | 'doubleFrame'
-  | 'ornateFrame'
-  | 'roundFrame'
-  | 'arch'
-  | 'circle'
-  | 'medallion'
-  | 'rosette'
-  | 'star'
-  | 'khatam'
-  | 'divider'
-  | 'rhombus';
+/** How a standalone element is drawn: font glyphs, or a cluster of rhombic pen dots. */
+export type MarkShape = 'glyph' | 'dot1' | 'dot2h' | 'dot2v' | 'dot3' | 'dot3i';
 
-export interface ShapeObject extends BaseObject {
-  type: 'shape';
-  kind: ShapeKind;
-  w: number;
-  h: number;
-  /** petals / points for rosette and star */
-  points: number;
-  /** inner radius ratio for star, ornament density for frames */
-  inner: number;
-  fill: Fill | null;
-  stroke: StrokeStyle | null;
-  shadow: Shadow | null;
+/**
+ * A diacritic, dot group or sign placed on the page as its own object, separate from
+ * any line of text. It may be attached to a line so it follows it when the line moves.
+ */
+export interface MarkObject extends BaseObject {
+  type: 'mark';
+  /** catalogue id of the element (for its label) */
+  element: string;
+  shape: MarkShape;
+  /** characters drawn when shape is "glyph" */
+  text: string;
+  fontId: string;
+  /** em size in mm, the same unit as a line's size */
+  size: number;
+  fill: Fill;
+  /** line this element belongs to, or null */
+  ownerId: string | null;
 }
 
 export interface ImageObject extends BaseObject {
@@ -133,14 +127,7 @@ export interface ImageObject extends BaseObject {
   h: number;
 }
 
-/** A reed-pen (qalam) stroke drawn by hand. Path data is in local mm coordinates. */
-export interface InkObject extends BaseObject {
-  type: 'ink';
-  d: string;
-  color: string;
-}
-
-export type DocObject = TextObject | ShapeObject | ImageObject | InkObject;
+export type DocObject = TextObject | MarkObject | ImageObject;
 export type ObjectType = DocObject['type'];
 
 export type PatternKind = 'none' | 'dots' | 'grid' | 'diagonal' | 'stars8' | 'hexagons' | 'circles' | 'lattice';
@@ -161,8 +148,8 @@ export interface Page {
   objects: DocObject[];
 }
 
-export interface KelkDoc {
-  format: 'kelk-web';
+export interface MidadDoc {
+  format: 'midad';
   version: 1;
   title: string;
   pages: Page[];

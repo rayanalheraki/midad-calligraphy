@@ -25,12 +25,6 @@ export const IconHand = () => (
     <path d="M8 13V5.5a1.5 1.5 0 013 0V12M11 11V4a1.5 1.5 0 013 0v7M14 11V5.5a1.5 1.5 0 013 0V14c0 4-2.5 7-6 7-2.5 0-4-1.3-5.3-3.4L4 14.6a1.4 1.4 0 012.3-1.5L8 15" />
   </Icon>
 );
-export const IconPen = () => (
-  <Icon>
-    <path d="M4 20l3.5-1L19 7.5a2 2 0 00-2.8-2.8L4.8 16.2z" />
-    <path d="M14.5 6.5l3 3" />
-  </Icon>
-);
 export const IconText = () => (
   <Icon>
     <path d="M19 7c-.5 5-3.5 8-9 8H5" />
@@ -38,10 +32,11 @@ export const IconText = () => (
     <path d="M5 19h14" opacity=".5" />
   </Icon>
 );
-export const IconShapes = () => (
+export const IconMarks = () => (
   <Icon>
-    <path d="M12 2.8l2.2 4.4 4.8.7-3.5 3.4.8 4.8L12 13.8l-4.3 2.3.8-4.8L5 7.9l4.8-.7z" />
-    <circle cx="12" cy="18.5" r="2.5" />
+    <path d="M5 8.5l9-3" />
+    <path d="M7.5 13.5c1.5-1 3-.5 2.6 1.1-.4 1.6-2.4 2.5-3.6 4.9" />
+    <path d="M15.5 15l2.2-2.2 2.2 2.2-2.2 2.2z" fill="currentColor" />
   </Icon>
 );
 export const IconImage = () => (

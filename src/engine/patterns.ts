@@ -1,7 +1,16 @@
 // Background pattern tiles (geometric Islamic motifs), sizes in millimetres.
 import type { PatternKind } from '../model/types';
 import { fmt } from './geom';
-import { starPoints } from './ornaments';
+
+function starPoints(n: number, rOuter: number, rInner: number, rotation = -90): [number, number][] {
+  const pts: [number, number][] = [];
+  for (let i = 0; i < n * 2; i++) {
+    const r = i % 2 === 0 ? rOuter : rInner;
+    const a = ((rotation + (i * 180) / n) * Math.PI) / 180;
+    pts.push([r * Math.cos(a), r * Math.sin(a)]);
+  }
+  return pts;
+}
 
 export interface PatternTile {
   w: number;

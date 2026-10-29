@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent as RMouseEvent, type PointerEvent as RPointerEvent, type ReactElement } from 'react';
-import { createInk, createText, defaultGlyphOverride } from '../model/defaults';
-import type { DocObject, GlyphOverride, TextObject } from '../model/types';
+import { createText, defaultGlyphOverride } from '../model/defaults';
+import { findElement, markFromElement, type ElementStyle } from '../model/elements';
+import type { DocObject, GlyphOverride, MarkObject, TextObject } from '../model/types';
 import { getLoadedFont } from '../engine/fonts';
 import { textGeometry } from '../engine/layout';
 import {
@@ -18,10 +19,10 @@ import {
   type Point,
   type Rect,
 } from '../engine/geom';
-import { reedPenStroke, translatePath, type PenPoint } from '../engine/pen';
-import { PageContent } from '../render/PageView';
+import { markFontIds } from '../engine/marks';
+import { ObjectView, PageContent } from '../render/PageView';
 import { localBox, worldBox } from '../render/bounds';
-import { usePage, useEditor } from '../store/editor';
+import { usePage, useEditor, withAttached } from '../store/editor';
 import { useFonts } from '../store/fonts';
 import { useCursor } from '../store/cursor';
 import { lastTextStyle } from './textDefaults';
@@ -41,19 +42,20 @@ interface ItemSnap {
   scaleY: number;
   w: number;
   h: number;
+  /** an element that follows its line rather than being selected itself */
+  attached: boolean;
 }
 
 type Drag =
   | { kind: 'pan'; sx: number; sy: number; panX: number; panY: number }
   | { kind: 'move'; start: Point; items: ItemSnap[]; box: Rect; xs: number[]; ys: number[] }
   | { kind: 'scale'; handle: Handle; start: Point; items: ItemSnap[]; pivot: Point; rot: number; single: boolean }
-  | { kind: 'rotate'; start: Point; center: Point; items: ItemSnap[] }
+  | { kind: 'rotate'; start: Point; center: Point; items: ItemSnap[]; single: boolean }
   | { kind: 'marquee'; start: Point; additive: boolean }
-  | { kind: 'pen'; points: PenPoint[] }
   | { kind: 'gmove'; objectId: string; keys: string[]; start: Point; inv: Matrix; base: Record<string, GlyphOverride> }
   | { kind: 'grotate' | 'gscale'; objectId: string; keys: string[]; start: Point; center: Point; base: Record<string, GlyphOverride> };
 
-const snapItem = (o: DocObject): ItemSnap => ({
+const snapItem = (o: DocObject, attached = false): ItemSnap => ({
   id: o.id,
   type: o.type,
   x: o.x,
@@ -63,6 +65,7 @@ const snapItem = (o: DocObject): ItemSnap => ({
   scaleY: o.scaleY,
   w: 'w' in o ? o.w : 0,
   h: 'h' in o ? o.h : 0,
+  attached,
 });
 
 function linearOnly(m: Matrix): Matrix {
@@ -80,7 +83,8 @@ export function Stage() {
   const selection = useEditor((s) => s.selection);
   const glyphSel = useEditor((s) => s.glyphSel);
   const view = useEditor((s) => s.view);
-  const pen = useEditor((s) => s.pen);
+  const pendingElement = useEditor((s) => s.pendingElement);
+  const elementOwner = useEditor((s) => s.elementOwner);
   const fontsVersion = useFonts((s) => s.version);
   const cursor = useCursor((s) => s.pos);
 
@@ -90,7 +94,6 @@ export function Stage() {
   const drag = useRef<Drag | null>(null);
   const [marquee, setMarquee] = useState<Rect | null>(null);
   const [guides, setGuides] = useState<{ v: number[]; h: number[] }>({ v: [], h: [] });
-  const [penPreview, setPenPreview] = useState<string | null>(null);
   const [spaceDown, setSpaceDown] = useState(false);
 
   const k = view.zoom * MM;
@@ -128,7 +131,10 @@ export function Stage() {
   // Load fonts used on this page.
   useEffect(() => {
     const req = useFonts.getState().request;
-    for (const o of page.objects) if (o.type === 'text') void req(o.fontId);
+    for (const o of page.objects) {
+      if (o.type === 'text') void req(o.fontId);
+      else if (o.type === 'mark') for (const id of markFontIds(o)) void req(id);
+    }
   }, [page.objects]);
 
   useEffect(() => {
@@ -183,6 +189,33 @@ export function Stage() {
   const objectsById = useMemo(() => new Map(page.objects.map((o) => [o.id, o])), [page.objects]);
   const selectedObjects = selection.map((id) => objectsById.get(id)).filter((o): o is DocObject => !!o);
 
+  /** Unlocked elements attached to the given lines that are not themselves in `ids`. */
+  const attachedTo = (ids: string[]): DocObject[] => {
+    const all = new Set(withAttached(page.objects, ids));
+    return page.objects.filter((o) => all.has(o.id) && !ids.includes(o.id) && !o.locked);
+  };
+
+  // Element placement: new elements take the font, size and colour of their line.
+  const ownerCandidate = elementOwner ? objectsById.get(elementOwner) : undefined;
+  const ownerObject: TextObject | null = ownerCandidate?.type === 'text' ? ownerCandidate : null;
+  const elementStyle: ElementStyle = useMemo(
+    () =>
+      ownerObject
+        ? { fontId: ownerObject.fontId, size: ownerObject.size * Math.abs(ownerObject.scaleY), fill: ownerObject.fill }
+        : { fontId: lastTextStyle.fontId ?? 'amiri', size: lastTextStyle.size ?? 18, fill: lastTextStyle.fill ?? { kind: 'solid', color: '#1b1e27' } },
+    [ownerObject],
+  );
+  const ghost: MarkObject | null = useMemo(() => {
+    if (tool !== 'mark') return null;
+    const def = findElement(pendingElement);
+    return def ? markFromElement(def, elementStyle, null, 0, 0) : null;
+  }, [tool, pendingElement, elementStyle]);
+  useEffect(() => {
+    if (!ghost) return;
+    const req = useFonts.getState().request;
+    for (const id of markFontIds(ghost)) void req(id);
+  }, [ghost]);
+
   const glyphObject: TextObject | null = (() => {
     if (tool !== 'glyph') return null;
     const o = selectedObjects[0];
@@ -204,8 +237,11 @@ export function Stage() {
       return;
     }
 
-    if (tool === 'pen') {
-      drag.current = { kind: 'pen', points: [{ x: p.x, y: p.y, p: e.pressure || 0.5 }] };
+    if (tool === 'mark') {
+      // Like the vowel window of desktop calligraphy editors: every click places the chosen
+      // element; the tool stays active until another tool is picked or Esc is pressed.
+      const def = findElement(pendingElement);
+      if (def) st.addObject(markFromElement(def, elementStyle, ownerObject?.id ?? null, p.x, p.y), false);
       return;
     }
 
@@ -213,7 +249,7 @@ export function Stage() {
       const t = createText({ ...lastTextStyle, x: p.x, y: p.y, text: 'اكتب نصّك هنا' });
       st.addObject(t);
       st.setTool('select');
-      window.dispatchEvent(new CustomEvent('kelk:focus-text'));
+      window.dispatchEvent(new CustomEvent('midad:focus-text'));
       return;
     }
 
@@ -269,14 +305,15 @@ export function Stage() {
     }
 
     if (handle && selectedObjects.length) {
-      const items = selectedObjects.filter((o) => !o.locked).map(snapItem);
-      if (!items.length) return;
+      const own = selectedObjects.filter((o) => !o.locked).map((o) => snapItem(o));
+      if (!own.length) return;
+      const items = [...own, ...attachedTo(own.map((it) => it.id)).map((o) => snapItem(o, true))];
       st.beginGesture();
-      const single = items.length === 1;
+      const single = own.length === 1;
       const box = selectionBox();
-      const center = single ? { x: items[0].x, y: items[0].y } : { x: (box.minX + box.maxX) / 2, y: (box.minY + box.maxY) / 2 };
-      if (handle === 'rot') drag.current = { kind: 'rotate', start: p, center, items };
-      else drag.current = { kind: 'scale', handle, start: p, items, pivot: center, rot: single ? items[0].rotation : 0, single };
+      const center = single ? { x: own[0].x, y: own[0].y } : { x: (box.minX + box.maxX) / 2, y: (box.minY + box.maxY) / 2 };
+      if (handle === 'rot') drag.current = { kind: 'rotate', start: p, center, items, single };
+      else drag.current = { kind: 'scale', handle, start: p, items, pivot: center, rot: single ? own[0].rotation : 0, single };
       return;
     }
 
@@ -303,7 +340,8 @@ export function Stage() {
         ys.push(b.minY, (b.minY + b.maxY) / 2, b.maxY);
       }
       st.beginGesture();
-      drag.current = { kind: 'move', start: p, items: moving.map(snapItem), box, xs, ys };
+      const followers = attachedTo(moving.map((o) => o.id)).map((o) => snapItem(o, true));
+      drag.current = { kind: 'move', start: p, items: [...moving.map((o) => snapItem(o)), ...followers], box, xs, ys };
       return;
     }
 
@@ -321,13 +359,6 @@ export function Stage() {
       case 'pan':
         st.setView({ panX: d.panX + e.clientX - d.sx, panY: d.panY + e.clientY - d.sy });
         break;
-      case 'pen': {
-        const last = d.points[d.points.length - 1];
-        if (Math.hypot(p.x - last.x, p.y - last.y) < 0.25) return;
-        d.points.push({ x: p.x, y: p.y, p: e.pressure || 0.5 });
-        setPenPreview(reedPenStroke(d.points, pen.width, pen.angle, pen.pressure && e.pointerType === 'pen').d);
-        break;
-      }
       case 'move': {
         let dx = p.x - d.start.x;
         let dy = p.y - d.start.y;
@@ -395,11 +426,14 @@ export function Stage() {
           for (const it of d.items) {
             const o = objs.find((x) => x.id === it.id);
             if (!o) continue;
-            if (!d.single) {
-              o.x = d.pivot.x + (it.x - d.pivot.x) * fx;
-              o.y = d.pivot.y + (it.y - d.pivot.y) * fy;
+            if (!d.single || it.attached) {
+              // Scale the position in the frame of the handles (rotated for a single object).
+              const q = apply(rotate(-d.rot), it.x - d.pivot.x, it.y - d.pivot.y);
+              const back = apply(rotate(d.rot), q.x * fx, q.y * fy);
+              o.x = d.pivot.x + back.x;
+              o.y = d.pivot.y + back.y;
             }
-            if (o.type === 'shape' || o.type === 'image') {
+            if (o.type === 'image') {
               o.w = Math.max(0.5, it.w * fx);
               o.h = Math.max(0.5, it.h * fy);
             } else {
@@ -421,10 +455,10 @@ export function Stage() {
             const o = objs.find((x) => x.id === it.id);
             if (!o) continue;
             let r = it.rotation + delta;
-            if (e.shiftKey && d.items.length === 1) r = Math.round(r / 15) * 15;
+            if (e.shiftKey && d.single && !it.attached) r = Math.round(r / 15) * 15;
             o.rotation = ((r % 360) + 540) % 360 - 180;
-            if (d.items.length > 1) {
-              const q = apply(chain(rotate(delta)), it.x - d.center.x, it.y - d.center.y);
+            if (!d.single || it.attached) {
+              const q = apply(rotate(delta), it.x - d.center.x, it.y - d.center.y);
               o.x = d.center.x + q.x;
               o.y = d.center.y + q.y;
             }
@@ -474,20 +508,11 @@ export function Stage() {
     }
   };
 
-  const onPointerUp = (e: RPointerEvent<SVGSVGElement>) => {
+  const onPointerUp = () => {
     const d = drag.current;
     drag.current = null;
     const st = useEditor.getState();
     if (!d) return;
-    if (d.kind === 'pen') {
-      setPenPreview(null);
-      const stroke = reedPenStroke(d.points, pen.width, pen.angle, pen.pressure && e.pointerType === 'pen');
-      if (isEmptyRect(stroke.box)) return;
-      const cx = (stroke.box.minX + stroke.box.maxX) / 2;
-      const cy = (stroke.box.minY + stroke.box.maxY) / 2;
-      st.addObject(createInk(translatePath(stroke.d, cx, cy), pen.color, cx, cy), false);
-      return;
-    }
     if (d.kind === 'marquee') {
       const m = marquee;
       setMarquee(null);
@@ -631,7 +656,11 @@ export function Stage() {
               ))}
             </g>
           )}
-          {penPreview && <path d={penPreview} fill={pen.color} opacity={0.85} pointerEvents="none" />}
+          {ghost && cursor && (
+            <g transform={`translate(${cursor.x} ${cursor.y})`} opacity={0.5} pointerEvents="none">
+              <ObjectView o={ghost} mode="export" glyphEdit={false} fontsVersion={fontsVersion} />
+            </g>
+          )}
         </g>
         <g className="overlay">{overlay}</g>
         {guides.v.map((x, i) => (

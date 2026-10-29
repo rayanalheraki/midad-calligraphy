@@ -1,17 +1,16 @@
-// SinaSoft ("Sina") code page used by Kelk/Zarnegar for stored text.
+// Legacy single-byte code page used for text inside KLX files.
 // Bytes 0x00-0xBF are identical to Windows-1256; 0xC0-0xFF follow Persian alphabetical
-// order. The mapping below (Sina -> Windows-1256) was recovered from the conversion table
-// shipped in Kelk's text-handling DLLs, for interoperability with old .klx documents.
-const SINA_HIGH =
+// order. The table below maps them to Windows-1256 so old files can be read.
+const LEGACY_HIGH =
   'c0c2c7c1c3c4c5c6c881cac9cbcc8dcdcecfd0d1d28ed3d7d4d5d6d8dcd9dadbdddedf90e1e3e4e6e5edecebecedeeeff0f1f2f3f4f5f6f7f8f9fafbfcfdfeff';
 
 const TABLE = new Uint8Array(256);
 for (let i = 0; i < 256; i++) TABLE[i] = i;
-for (let i = 0; i < 64; i++) TABLE[0xc0 + i] = parseInt(SINA_HIGH.slice(i * 2, i * 2 + 2), 16);
+for (let i = 0; i < 64; i++) TABLE[0xc0 + i] = parseInt(LEGACY_HIGH.slice(i * 2, i * 2 + 2), 16);
 
 let decoder: TextDecoder | null = null;
 
-export function sinaToUnicode(bytes: Uint8Array): string {
+export function legacyToUnicode(bytes: Uint8Array): string {
   const mapped = new Uint8Array(bytes.length);
   for (let i = 0; i < bytes.length; i++) mapped[i] = TABLE[bytes[i]];
   decoder ??= new TextDecoder('windows-1256');
@@ -31,12 +30,12 @@ function unpair(body: string, invert: boolean): Uint8Array | null {
 }
 
 /**
- * Decodes a string stored by Kelk. Two layouts exist:
- *  - "$*&!" + letter pairs (Kelk 2007+): two letters a-p per byte, bit-interleaved, inverted;
- *  - "??=@" + letter pairs (Kelk 2000-2005): same interleave without the inversion.
- * The prefix can be applied more than once; the final bytes are in the Sina code page.
+ * Decodes a string stored in a KLX file. Two layouts exist:
+ *  - "$*&!" + letter pairs (newer files): two letters a-p per byte, bit-interleaved, inverted;
+ *  - "??=@" + letter pairs (older files): same interleave without the inversion.
+ * The prefix can be applied more than once; the final bytes are in the legacy code page above.
  */
-export function decodeKelkString(s: string): string {
+export function decodeKlxString(s: string): string {
   let cur = s;
   for (let guard = 0; guard < 8; guard++) {
     let bytes: Uint8Array | null = null;
@@ -46,14 +45,14 @@ export function decodeKelkString(s: string): string {
     if (!bytes) break;
     cur = String.fromCharCode(...bytes);
     if (!cur.startsWith('$*&!') && !cur.startsWith('??=@')) {
-      return sinaToUnicode(bytes);
+      return legacyToUnicode(bytes);
     }
   }
   return cur.startsWith('$*&!') || cur.startsWith('??=@') ? '' : cur;
 }
 
-/** Inverse of decodeKelkString for the "$*&!" layout (used by tests to build fixtures). */
-export function encodeKelkBytes(bytes: Uint8Array): string {
+/** Inverse of decodeKlxString for the "$*&!" layout (used by tests to build fixtures). */
+export function encodeKlxBytes(bytes: Uint8Array): string {
   let out = '$*&!';
   for (const b of bytes) {
     const p = ~b & 0xff;
@@ -64,12 +63,12 @@ export function encodeKelkBytes(bytes: Uint8Array): string {
   return out;
 }
 
-export function unicodeToSina(text: string): Uint8Array {
+export function unicodeToLegacy(text: string): Uint8Array {
   const reverse = new Map<string, number>();
   decoder ??= new TextDecoder('windows-1256');
-  for (let sina = 0; sina < 256; sina++) {
-    const ch = decoder.decode(new Uint8Array([TABLE[sina]]));
-    if (!reverse.has(ch)) reverse.set(ch, sina);
+  for (let code = 0; code < 256; code++) {
+    const ch = decoder.decode(new Uint8Array([TABLE[code]]));
+    if (!reverse.has(ch)) reverse.set(ch, code);
   }
   return new Uint8Array(Array.from(text, (ch) => reverse.get(ch) ?? 0x3f));
 }

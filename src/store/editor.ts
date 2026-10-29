@@ -2,9 +2,9 @@ import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
 import type { Draft } from 'immer';
 import { createDoc, createPage, uid } from '../model/defaults';
-import type { DocObject, KelkDoc, Page } from '../model/types';
+import type { DocObject, MidadDoc, Page } from '../model/types';
 
-export type Tool = 'select' | 'glyph' | 'hand' | 'pen' | 'text';
+export type Tool = 'select' | 'glyph' | 'hand' | 'mark' | 'text';
 export type DialogId = 'export' | 'templates' | 'works' | 'pageText' | 'about' | 'fonts' | 'import' | 'shortcuts' | null;
 
 export interface ViewState {
@@ -15,13 +15,6 @@ export interface ViewState {
   grid: boolean;
   snap: boolean;
   fitRequest: number;
-}
-
-export interface PenSettings {
-  width: number;
-  angle: number;
-  color: string;
-  pressure: boolean;
 }
 
 export interface Toast {
@@ -37,16 +30,19 @@ export interface ImportReport {
 }
 
 interface EditorState {
-  doc: KelkDoc;
+  doc: MidadDoc;
   pageIndex: number;
   selection: string[];
   glyphSel: { objectId: string; keys: string[] } | null;
   tool: Tool;
   view: ViewState;
-  pen: PenSettings;
-  past: KelkDoc[];
-  future: KelkDoc[];
-  gestureBase: KelkDoc | null;
+  /** element chosen for placement while the element tool is active */
+  pendingElement: string;
+  /** line the placed elements are attached to */
+  elementOwner: string | null;
+  past: MidadDoc[];
+  future: MidadDoc[];
+  gestureBase: MidadDoc | null;
   dialog: DialogId;
   toasts: Toast[];
   keyboardOpen: boolean;
@@ -54,15 +50,15 @@ interface EditorState {
   clipboard: DocObject[];
   savedWorkId: string | null;
 
-  commit: (recipe: (doc: Draft<KelkDoc>) => void) => void;
+  commit: (recipe: (doc: Draft<MidadDoc>) => void) => void;
   beginGesture: () => void;
-  gesture: (recipe: (doc: Draft<KelkDoc>) => void) => void;
+  gesture: (recipe: (doc: Draft<MidadDoc>) => void) => void;
   /** Applies a change inside the current gesture, or as its own undo step when none is active. */
-  liveEdit: (recipe: (doc: Draft<KelkDoc>) => void) => void;
+  liveEdit: (recipe: (doc: Draft<MidadDoc>) => void) => void;
   endGesture: () => void;
   undo: () => void;
   redo: () => void;
-  loadDoc: (doc: KelkDoc, workId?: string | null) => void;
+  loadDoc: (doc: MidadDoc, workId?: string | null) => void;
 
   setPageIndex: (i: number) => void;
   addPage: () => void;
@@ -83,7 +79,7 @@ interface EditorState {
   setGlyphSel: (sel: { objectId: string; keys: string[] } | null) => void;
   setTool: (t: Tool) => void;
   setView: (v: Partial<ViewState>) => void;
-  setPen: (p: Partial<PenSettings>) => void;
+  startElement: (id: string) => void;
   setDialog: (d: DialogId) => void;
   setKeyboardOpen: (open: boolean) => void;
   setImportReport: (r: ImportReport | null) => void;
@@ -94,11 +90,41 @@ interface EditorState {
 
 const HISTORY_LIMIT = 150;
 
+/** The ids plus the ids of elements attached to any of them. */
+export function withAttached(objects: readonly DocObject[], ids: readonly string[]): string[] {
+  const set = new Set(ids);
+  for (const o of objects) if (o.type === 'mark' && o.ownerId && set.has(o.ownerId)) set.add(o.id);
+  return [...set];
+}
+
+/** Deep copies with fresh ids, offset by `shift` mm; attached elements follow their copied line. */
+function cloneObjects(objects: readonly DocObject[], ids: readonly string[], roots: readonly string[], shift: number) {
+  const wanted = new Set(ids);
+  const remap = new Map<string, string>();
+  const source = objects.filter((o) => wanted.has(o.id));
+  for (const o of source) remap.set(o.id, uid(o.id[0]));
+  const copies = source.map((o) => {
+    const c = { ...JSON.parse(JSON.stringify(o)), id: remap.get(o.id)!, x: o.x + shift, y: o.y + shift } as DocObject;
+    if (c.type === 'mark' && c.ownerId) c.ownerId = remap.get(c.ownerId) ?? null;
+    return c;
+  });
+  return { copies, roots: roots.map((id) => remap.get(id)).filter((x): x is string => !!x) };
+}
+
+function ownerFromSelection(s: Draft<EditorState>): string | null {
+  const page = s.doc.pages[Math.min(s.pageIndex, s.doc.pages.length - 1)];
+  const sel = page.objects.find((o) => o.id === s.selection[0]);
+  if (!sel) return null;
+  if (sel.type === 'text') return sel.id;
+  if (sel.type === 'mark') return sel.ownerId;
+  return null;
+}
+
 export const useEditor = create<EditorState>()(
   immer((set, get) => {
-    const pushHistory = (before: KelkDoc) => {
+    const pushHistory = (before: MidadDoc) => {
       set((s) => {
-        s.past.push(before as Draft<KelkDoc>);
+        s.past.push(before as Draft<MidadDoc>);
         if (s.past.length > HISTORY_LIMIT) s.past.shift();
         s.future = [];
         s.doc.meta.modified = new Date().toISOString();
@@ -113,7 +139,8 @@ export const useEditor = create<EditorState>()(
       glyphSel: null,
       tool: 'select',
       view: { zoom: 1, panX: 0, panY: 0, rulers: true, grid: false, snap: true, fitRequest: 1 },
-      pen: { width: 3, angle: 35, color: '#1b1e27', pressure: true },
+      pendingElement: 'fatha',
+      elementOwner: null,
       past: [],
       future: [],
       gestureBase: null,
@@ -163,7 +190,7 @@ export const useEditor = create<EditorState>()(
         }),
       loadDoc: (doc, workId = null) =>
         set((s) => {
-          s.doc = doc as Draft<KelkDoc>;
+          s.doc = doc as Draft<MidadDoc>;
           s.pageIndex = 0;
           s.selection = [];
           s.glyphSel = null;
@@ -211,7 +238,8 @@ export const useEditor = create<EditorState>()(
           if (o) recipe(o);
         }),
       removeSelected: () => {
-        const sel = new Set(get().selection);
+        const page = get().doc.pages[get().pageIndex];
+        const sel = new Set(withAttached(page.objects, get().selection));
         if (!sel.size) return;
         get().commit((d) => {
           const p = d.pages[get().pageIndex];
@@ -220,26 +248,25 @@ export const useEditor = create<EditorState>()(
         set((s) => void ((s.selection = []), (s.glyphSel = null)));
       },
       duplicateSelected: () => {
-        const sel = new Set(get().selection);
         const page = get().doc.pages[get().pageIndex];
-        const copies = page.objects
-          .filter((o) => sel.has(o.id))
-          .map((o) => ({ ...JSON.parse(JSON.stringify(o)), id: uid(o.id[0]), x: o.x + 6, y: o.y + 6 }) as DocObject);
+        const { copies, roots } = cloneObjects(page.objects, withAttached(page.objects, get().selection), get().selection, 6);
         if (!copies.length) return;
         get().commit((d) => void d.pages[get().pageIndex].objects.push(...(copies as Draft<DocObject>[])));
-        set((s) => void (s.selection = copies.map((c) => c.id)));
+        set((s) => void (s.selection = roots));
       },
       copySelected: () => {
-        const sel = new Set(get().selection);
-        const objs = get().doc.pages[get().pageIndex].objects.filter((o) => sel.has(o.id));
+        const page = get().doc.pages[get().pageIndex];
+        const ids = new Set(withAttached(page.objects, get().selection));
+        const objs = page.objects.filter((o) => ids.has(o.id));
         set((s) => void (s.clipboard = JSON.parse(JSON.stringify(objs))));
         if (objs.length) get().toast(`نُسخ ${objs.length} عنصر.`, 'info');
       },
       paste: () => {
-        const items = get().clipboard.map((o) => ({ ...JSON.parse(JSON.stringify(o)), id: uid(o.id[0]), x: o.x + 8, y: o.y + 8 }) as DocObject);
-        if (!items.length) return;
-        get().commit((d) => void d.pages[get().pageIndex].objects.push(...(items as Draft<DocObject>[])));
-        set((s) => void (s.selection = items.map((c) => c.id)));
+        const clip = get().clipboard;
+        const { copies } = cloneObjects(clip, clip.map((o) => o.id), [], 8);
+        if (!copies.length) return;
+        get().commit((d) => void d.pages[get().pageIndex].objects.push(...(copies as Draft<DocObject>[])));
+        set((s) => void (s.selection = copies.filter((c) => !(c.type === 'mark' && c.ownerId)).map((c) => c.id)));
       },
       reorder: (id, where) =>
         get().commit((d) => {
@@ -260,11 +287,18 @@ export const useEditor = create<EditorState>()(
       setGlyphSel: (sel) => set((s) => void (s.glyphSel = sel)),
       setTool: (t) =>
         set((s) => {
+          if (t === 'mark' && s.tool !== 'mark') s.elementOwner = ownerFromSelection(s);
           s.tool = t;
           if (t !== 'glyph') s.glyphSel = null;
         }),
       setView: (v) => set((s) => void Object.assign(s.view, v)),
-      setPen: (p) => set((s) => void Object.assign(s.pen, p)),
+      startElement: (id) =>
+        set((s) => {
+          s.pendingElement = id;
+          if (s.tool !== 'mark') s.elementOwner = ownerFromSelection(s);
+          s.tool = 'mark';
+          s.glyphSel = null;
+        }),
       setDialog: (d) => set((s) => void (s.dialog = d)),
       setKeyboardOpen: (open) => set((s) => void (s.keyboardOpen = open)),
       setImportReport: (r) => set((s) => void ((s.importReport = r), (s.dialog = r ? 'import' : s.dialog))),

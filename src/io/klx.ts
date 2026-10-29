@@ -1,10 +1,10 @@
-// Reader for Kelk 2000-2010 documents (*.klx).
+// Reader for legacy calligraphy documents (*.klx).
 // A .klx file is a VB6 Byte() array (descriptor 0x2011) holding a PropertyBag.Contents blob:
 //   u32 0xB293 signature, u32 length, then records:
 //   u16 vartype, u16 nameChars, u32 hash, u32 recordSize, UTF-16 name, value, padding.
 // Pages after the first are nested PropertyBags stored as Byte() values named "page1".."pageN".
 // Every read is bounds-checked; malformed input stops the parse instead of reading past the buffer.
-import { decodeKelkString } from './sina';
+import { decodeKlxString } from './klxText';
 
 export type KlxValue = number | string | boolean | KlxBag | { bytes: number } | null;
 export type KlxBag = Map<string, KlxValue>;
@@ -99,9 +99,9 @@ function parseBag(view: DataView, off: number, end: number, depth: number, st: P
 
 export function parseKlxBag(buffer: ArrayBuffer): KlxBag {
   if (buffer.byteLength > KLX_LIMITS.maxFileBytes) throw new KlxError('حجم الملف أكبر من الحد المسموح.');
-  if (buffer.byteLength < 20) throw new KlxError('الملف صغير جدًا ليكون مستند كِلك.');
+  if (buffer.byteLength < 20) throw new KlxError('الملف صغير جدًا ليكون ملف KLX.');
   const view = new DataView(buffer);
-  if (view.getUint16(0, true) !== 0x2011) throw new KlxError('هذا الملف ليس مستند Kelk بصيغة KLX.');
+  if (view.getUint16(0, true) !== 0x2011) throw new KlxError('هذا الملف ليس بصيغة KLX.');
   const count = view.getUint32(4, true);
   const end = Math.min(buffer.byteLength, 12 + count);
   return parseBag(view, 12, end, 0, { records: 0 });
@@ -151,7 +151,7 @@ export interface KlxDocument {
   warnings: string[];
 }
 
-export const KELK_STYLE_NAMES: Record<number, string> = {
+export const KLX_STYLE_NAMES: Record<number, string> = {
   1: 'نستعليق',
   2: 'نسخ',
   3: 'ثلث',
@@ -196,7 +196,7 @@ function readPage(bag: KlxBag, warnings: string[]): KlxPage {
       const wk = `${k}_${j}`;
       if (!bag.has('attx' + wk)) continue;
       words.push({
-        text: decodeKelkString(str(bag.get('attrawstr' + wk))).trim(),
+        text: decodeKlxString(str(bag.get('attrawstr' + wk))).trim(),
         x: mm(num(bag.get('attx' + wk))),
         y: mm(num(bag.get('atty' + wk))),
         size: num(bag.get('attfntsize' + wk)),
@@ -209,14 +209,14 @@ function readPage(bag: KlxBag, warnings: string[]): KlxPage {
       const pk = `${k}_${j}`;
       if (!bag.has('punx' + pk)) continue;
       marks.push({
-        text: decodeKelkString(str(bag.get('punrawstr' + pk))).trim(),
+        text: decodeKlxString(str(bag.get('punrawstr' + pk))).trim(),
         x: mm(num(bag.get('punx' + pk))),
         y: mm(num(bag.get('puny' + pk))),
         size: num(bag.get('punfntsize' + pk)),
         color: vbColor(num(bag.get('punfntcolor' + pk))),
       });
     }
-    let text = decodeKelkString(str(bag.get('ltextstr' + k))).trim();
+    let text = decodeKlxString(str(bag.get('ltextstr' + k))).trim();
     if (!text && words.length) text = words.map((w) => w.text).join(' ');
     lines.push({
       text,

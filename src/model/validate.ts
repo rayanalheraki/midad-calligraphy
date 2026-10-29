@@ -3,17 +3,18 @@
 // embedded images must be base64 data URLs of raster formats. Anything else is dropped.
 import { clamp } from '../engine/geom';
 import { findFontDef, DEFAULT_FONT_ID } from '../engine/fonts';
-import { createPage, createShape, createText, defaultBackground, defaultGlyphOverride, uid } from './defaults';
+import { createPage, createText, defaultBackground, defaultGlyphOverride, uid } from './defaults';
+import { findElement } from './elements';
 import type {
   Background,
   DocObject,
   Fill,
   GlyphOverride,
-  KelkDoc,
+  MidadDoc,
   Page,
   PatternKind,
   Shadow,
-  ShapeKind,
+  MarkShape,
   StrokeStyle,
   TextObject,
 } from './types';
@@ -23,7 +24,6 @@ export const LIMITS = {
   maxObjectsPerPage: 2000,
   maxTextChars: 5000,
   maxImageChars: 15 * 1024 * 1024,
-  maxPathChars: 2 * 1024 * 1024,
   maxGlyphOverrides: 5000,
 };
 
@@ -42,11 +42,6 @@ const oneOf = <T extends string>(v: unknown, allowed: readonly T[], d: T): T =>
 const IMAGE_RE = /^data:image\/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/]+=*$/;
 export function safeImageSrc(v: unknown): string | null {
   return typeof v === 'string' && v.length <= LIMITS.maxImageChars && IMAGE_RE.test(v) ? v : null;
-}
-
-const PATH_RE = /^[MLHVZmlhvzQqCcAa0-9.,\s-]*$/;
-function safePath(v: unknown): string | null {
-  return typeof v === 'string' && v.length <= LIMITS.maxPathChars && PATH_RE.test(v) ? v : null;
 }
 
 function fill(v: unknown, d: Fill): Fill {
@@ -109,7 +104,7 @@ function glyphOverrides(v: unknown): Record<string, GlyphOverride> {
   return out;
 }
 
-const SHAPES: readonly ShapeKind[] = ['frame', 'doubleFrame', 'ornateFrame', 'roundFrame', 'arch', 'circle', 'medallion', 'rosette', 'star', 'khatam', 'divider', 'rhombus'];
+const MARK_SHAPES: readonly MarkShape[] = ['glyph', 'dot1', 'dot2h', 'dot2v', 'dot3', 'dot3i'];
 const PATTERNS: readonly PatternKind[] = ['none', 'dots', 'grid', 'diagonal', 'stars8', 'hexagons', 'circles', 'lattice'];
 
 function textObject(v: Obj, warnings: string[]): TextObject {
@@ -167,21 +162,24 @@ function object(v: unknown, warnings: string[]): DocObject | null {
   switch (v.type) {
     case 'text':
       return textObject(v, warnings);
-    case 'shape': {
-      const kind = oneOf(v.kind, SHAPES, 'frame');
-      const d = createShape(kind);
+    case 'mark': {
+      const element = str(v.element, '', 40);
+      const def = findElement(element);
+      let fontId = str(v.fontId, DEFAULT_FONT_ID, 80);
+      if (!findFontDef(fontId)) fontId = DEFAULT_FONT_ID;
+      const shape = def ? def.shape : oneOf(v.shape, MARK_SHAPES, 'dot1');
       return {
-        ...d,
         ...base(v),
-        id: uid('s'),
-        kind,
-        w: num(v.w, d.w, 0.5, 10000),
-        h: num(v.h, d.h, 0.5, 10000),
-        points: Math.round(num(v.points, d.points, 3, 64)),
-        inner: num(v.inner, d.inner, 0.05, 0.98),
-        fill: v.fill == null ? null : fill(v.fill, { kind: 'solid', color: '#1b1e27' }),
-        stroke: stroke(v.stroke),
-        shadow: shadow(v.shadow),
+        id: uid('m'),
+        type: 'mark',
+        element: def ? def.id : 'custom',
+        shape,
+        // Only short runs of text: an element is a mark or sign, not a line.
+        text: def ? def.text : str(v.text, '', 8),
+        fontId,
+        size: num(v.size, 18, 0.5, 2000),
+        fill: fill(v.fill, { kind: 'solid', color: '#1b1e27' }),
+        ownerId: typeof v.ownerId === 'string' ? v.ownerId.slice(0, 40) : null,
       };
     }
     case 'image': {
@@ -191,11 +189,6 @@ function object(v: unknown, warnings: string[]): DocObject | null {
         return null;
       }
       return { ...base(v), id: uid('i'), type: 'image', src, w: num(v.w, 50, 0.5, 10000), h: num(v.h, 50, 0.5, 10000) };
-    }
-    case 'ink': {
-      const d = safePath(v.d);
-      if (!d) return null;
-      return { ...base(v), id: uid('k'), type: 'ink', d, color: color(v.color, '#1b1e27') };
     }
     default:
       return null;
@@ -227,16 +220,25 @@ function page(v: unknown, warnings: string[]): Page | null {
   const p = createPage(num(v.width, 210, 10, 5000), num(v.height, 297, 10, 5000), str(v.name, 'صفحة', 80));
   p.background = background(v.background);
   if (Array.isArray(v.objects)) {
+    // Ids are regenerated, so element-to-line links are mapped from the file's ids.
+    const remap = new Map<string, string>();
     for (const o of v.objects.slice(0, LIMITS.maxObjectsPerPage)) {
       const obj = object(o, warnings);
-      if (obj) p.objects.push(obj);
+      if (!obj) continue;
+      if (isObj(o) && typeof o.id === 'string') remap.set(o.id, obj.id);
+      p.objects.push(obj);
+    }
+    for (const obj of p.objects) {
+      if (obj.type !== 'mark' || !obj.ownerId) continue;
+      const owner = remap.get(obj.ownerId);
+      obj.ownerId = owner && p.objects.some((x) => x.id === owner && x.type === 'text') ? owner : null;
     }
   }
   return p;
 }
 
-export function validateDoc(raw: unknown): { doc: KelkDoc; warnings: string[] } {
-  if (!isObj(raw) || raw.format !== 'kelk-web') throw new Error('هذا الملف ليس مشروع كِلك ويب.');
+export function validateDoc(raw: unknown): { doc: MidadDoc; warnings: string[] } {
+  if (!isObj(raw) || raw.format !== 'midad') throw new Error('هذا الملف ليس مشروع مِداد.');
   if (raw.version !== 1) throw new Error('إصدار المشروع غير مدعوم.');
   const warnings: string[] = [];
   const pages: Page[] = [];
@@ -251,7 +253,7 @@ export function validateDoc(raw: unknown): { doc: KelkDoc; warnings: string[] } 
   const now = new Date().toISOString();
   return {
     doc: {
-      format: 'kelk-web',
+      format: 'midad',
       version: 1,
       title: str(raw.title, 'عمل بلا عنوان', 200),
       pages,

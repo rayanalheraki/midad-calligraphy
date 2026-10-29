@@ -1,14 +1,14 @@
-// Converts a Kelk 2000-2010 document into a Kelk Web document.
-// Text, baselines, sizes, colours, rotation and rotational repeats are kept. Kelk's own
-// calligraphic glyphs are proprietary, so each style is mapped to the closest open font,
-// and vertical offsets of individually placed sub-words are carried over as letter edits.
+// Converts a legacy KLX document into an editable document.
+// Text, baselines, sizes, colours, rotation and rotational repeats are kept. Each style is
+// drawn with the closest open font, and vertical offsets of individually placed sub-words
+// are carried over as letter edits.
 import { createDoc, createPage, createText, defaultGlyphOverride } from '../model/defaults';
-import type { KelkDoc, TextObject } from '../model/types';
+import type { MidadDoc, TextObject } from '../model/types';
 import { ensureFont } from '../engine/fontLoader';
 import { findFontDef } from '../engine/fonts';
 import { computeTextGeometry } from '../engine/layout';
 import { clamp } from '../engine/geom';
-import { KELK_STYLE_NAMES, readKlxDocument, type KlxLine } from './klx';
+import { KLX_STYLE_NAMES, readKlxDocument, type KlxLine } from './klx';
 import type { ImportReport } from '../store/editor';
 
 const STYLE_FONT: Record<number, string> = {
@@ -44,7 +44,7 @@ function lineObject(line: KlxLine, fontId: string, lf: Awaited<ReturnType<typeof
   obj.size = len > 5 && probe.width > 0 ? clamp((10 * len) / probe.width, 3, 200) : clamp(line.size * 0.35, 4, 80);
   if (line.repeatCount > 1) obj.repeat = { count: Math.min(36, Math.round(line.repeatCount)), angle: line.repeatAngle || 360 / line.repeatCount, offset: 0 };
 
-  // Sub-words that Kelk raised or lowered (calligraphic composition) keep their vertical offset.
+  // Sub-words that were raised or lowered (calligraphic composition) keep their vertical offset.
   if (line.words.length > 1 && Math.abs(angle) < 1) {
     const geo = computeTextGeometry(obj, lf);
     let cursor = 0;
@@ -68,9 +68,9 @@ function lineObject(line: KlxLine, fontId: string, lf: Awaited<ReturnType<typeof
   return obj;
 }
 
-export async function importKlx(buffer: ArrayBuffer, fileName: string): Promise<{ doc: KelkDoc; report: ImportReport }> {
+export async function importKlx(buffer: ArrayBuffer, fileName: string): Promise<{ doc: MidadDoc; report: ImportReport }> {
   const kd = readKlxDocument(buffer);
-  const doc = createDoc(fileName.replace(/\.klx$/i, '') || 'مستند كِلك');
+  const doc = createDoc(fileName.replace(/\.klx$/i, '') || 'مستند مستورد');
   doc.pages = [];
   const usedStyles = new Map<number, number>();
   let lines = 0;
@@ -84,25 +84,25 @@ export async function importKlx(buffer: ArrayBuffer, fileName: string): Promise<
       page.objects.push(lineObject(line, fontId, lf));
       usedStyles.set(line.style, (usedStyles.get(line.style) ?? 0) + 1);
       lines++;
-      // Hand-placed vowels are stored as codes of Kelk's private vowel font, not Unicode.
+      // Hand-placed vowels are stored as codes of a non-standard vowel font, not Unicode.
       marks += line.marks.length;
     }
     doc.pages.push(page);
   }
   if (!doc.pages.length) doc.pages.push(createPage());
   const report: ImportReport = {
-    title: 'استيراد مستند كِلك',
+    title: 'استيراد ملف KLX',
     lines: [
       `الصفحات: ${doc.pages.length}، الأسطر: ${lines}.`,
       ...[...usedStyles.entries()].map(([style, n]) => {
         const font = findFontDef(STYLE_FONT[style] ?? 'amiri');
-        return `${KELK_STYLE_NAMES[style] ?? 'نمط ' + style} (${n} سطر) ← ${font?.name ?? 'أميري'}`;
+        return `${KLX_STYLE_NAMES[style] ?? 'نمط ' + style} (${n} سطر) ← ${font?.name ?? 'أميري'}`;
       }),
     ],
     warnings: [
-      'أشكال الحروف في كِلك الأصلي ملكٌ للشركة المنتجة، لذا رُسمت النصوص بأقرب خط مفتوح المصدر. يمكنك تغيير الخط من لوحة الخصائص.',
+      'رُسمت النصوص بأقرب خط متاح لكل نمط، ويمكنك تغيير الخط من لوحة الخصائص.',
       ...(marks
-        ? [`${marks} حركة أو نقطة وُضعت يدويًا في الملف الأصلي لم تُستورد، لأنها محفوظة برموز خط كِلك الخاص. أضفها من «الحركات والرموز» أو اكتبها مع النص.`]
+        ? [`${marks} حركة أو نقطة وُضعت يدويًا في الملف الأصلي لم تُستورد، لأنها محفوظة برموز خط غير قياسي. أضفها من «التشكيل والعناصر» أو اكتبها مع النص.`]
         : []),
       ...kd.warnings,
     ],
