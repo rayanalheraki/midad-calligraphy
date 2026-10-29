@@ -155,11 +155,22 @@ export interface StrokesObject extends BaseObject {
 export type DocObject = TextObject | MarkObject | StrokesObject;
 export type ObjectType = DocObject['type'];
 
+export type PatternKind = 'none' | 'dots' | 'grid' | 'diagonal' | 'stars8' | 'hexagons' | 'circles' | 'lattice';
+
+export interface Background {
+  color: string;
+  gradient: { from: string; to: string; angle: number } | null;
+  pattern: { kind: PatternKind; color: string; size: number; opacity: number };
+  /** src: data:image/png|jpeg|webp|gif;base64,... only */
+  image: { src: string; fit: 'cover' | 'contain' | 'stretch'; opacity: number } | null;
+}
+
 export interface Page {
   id: string;
   name: string;
   width: number;
   height: number;
+  background: Background;
   objects: DocObject[];
 }
 

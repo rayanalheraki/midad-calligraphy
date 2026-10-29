@@ -1,4 +1,5 @@
 import type {
+  Background,
   GlyphOverride,
   MidadDoc,
   Page,
@@ -23,8 +24,17 @@ export const PAGE_SIZES: { id: string; name: string; w: number; h: number }[] = 
   { id: 'banner', name: 'لافتة ٤٢٠×١٤٨', w: 420, h: 148 },
 ];
 
+export function defaultBackground(): Background {
+  return {
+    color: '#ffffff',
+    gradient: null,
+    pattern: { kind: 'none', color: '#1f3a73', size: 18, opacity: 0.12 },
+    image: null,
+  };
+}
+
 export function createPage(w = 210, h = 297, name = 'صفحة'): Page {
-  return { id: uid('p'), name, width: w, height: h, objects: [] };
+  return { id: uid('p'), name, width: w, height: h, background: defaultBackground(), objects: [] };
 }
 
 export function createDoc(title = 'عمل جديد'): MidadDoc {

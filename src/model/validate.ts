@@ -1,17 +1,20 @@
 // Validation and sanitisation of documents loaded from files or storage.
-// Only known fields are copied, numbers are clamped and colours must be #rrggbb.
-// Anything else (including images and page backgrounds of older files) is dropped.
+// Only known fields are copied, numbers are clamped, colours must be #rrggbb and
+// background images must be base64 data URLs of raster formats. Anything else
+// (including image objects of older files) is dropped.
 import { clamp } from '../engine/geom';
 import { currentFontId, findFontDef, DEFAULT_FONT_ID } from '../engine/fonts';
 import { MAX_DIP_PERCENT, MAX_STRETCH_EM } from '../engine/layout';
-import { createPage, createStrokes, createText, defaultGlyphOverride, uid } from './defaults';
+import { createPage, createStrokes, createText, defaultBackground, defaultGlyphOverride, uid } from './defaults';
 import { findElement } from './elements';
 import type {
+  Background,
   DocObject,
   Fill,
   GlyphOverride,
   MidadDoc,
   Page,
+  PatternKind,
   Shadow,
   MarkShape,
   StrokeStyle,
@@ -23,6 +26,7 @@ export const LIMITS = {
   maxObjectsPerPage: 2000,
   maxTextChars: 5000,
   maxGlyphOverrides: 5000,
+  maxImageChars: 15 * 1024 * 1024,
 };
 
 type Obj = Record<string, unknown>;
@@ -36,6 +40,11 @@ export const color = (v: unknown, d: string): string =>
 const str = (v: unknown, d: string, max: number): string => (typeof v === 'string' ? v.slice(0, max) : d);
 const oneOf = <T extends string>(v: unknown, allowed: readonly T[], d: T): T =>
   typeof v === 'string' && (allowed as readonly string[]).includes(v) ? (v as T) : d;
+
+const IMAGE_RE = /^data:image\/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/]+=*$/;
+export function safeImageSrc(v: unknown): string | null {
+  return typeof v === 'string' && v.length <= LIMITS.maxImageChars && IMAGE_RE.test(v) ? v : null;
+}
 
 function fill(v: unknown, d: Fill): Fill {
   if (!isObj(v)) return d;
@@ -213,16 +222,40 @@ function object(v: unknown, warnings: string[]): DocObject | null {
       };
     }
     case 'image':
-      warnings.push('أُهملت الصور: يقتصر المحرر على الخط وعناصره.');
+      warnings.push('أُهملت الصور المنفصلة عن الخلفية: تُضاف الصور الآن خلفيةً للصفحة.');
       return null;
     default:
       return null;
   }
 }
 
+const PATTERNS: readonly PatternKind[] = ['none', 'dots', 'grid', 'diagonal', 'stars8', 'hexagons', 'circles', 'lattice'];
+
+function background(v: unknown, warnings: string[]): Background {
+  const d = defaultBackground();
+  if (!isObj(v)) return d;
+  const pat = isObj(v.pattern) ? v.pattern : {};
+  const grad = isObj(v.gradient) ? v.gradient : null;
+  const img = isObj(v.image) ? v.image : null;
+  const imgSrc = img ? safeImageSrc(img.src) : null;
+  if (img && !imgSrc) warnings.push('أُهملت صورة خلفية لأن مصدرها ليس صورة مضمّنة آمنة.');
+  return {
+    color: color(v.color, d.color),
+    gradient: grad ? { from: color(grad.from, '#ffffff'), to: color(grad.to, '#e9edf5'), angle: num(grad.angle, 90, -360, 360) } : null,
+    pattern: {
+      kind: oneOf(pat.kind, PATTERNS, 'none'),
+      color: color(pat.color, d.pattern.color),
+      size: num(pat.size, d.pattern.size, 3, 300),
+      opacity: num(pat.opacity, d.pattern.opacity, 0, 1),
+    },
+    image: img && imgSrc ? { src: imgSrc, fit: oneOf(img.fit, ['cover', 'contain', 'stretch'] as const, 'cover'), opacity: num(img.opacity, 1, 0, 1) } : null,
+  };
+}
+
 function page(v: unknown, warnings: string[]): Page | null {
   if (!isObj(v)) return null;
   const p = createPage(num(v.width, 210, 10, 5000), num(v.height, 297, 10, 5000), str(v.name, 'صفحة', 80));
+  p.background = background(v.background, warnings);
   if (Array.isArray(v.objects)) {
     // Ids are regenerated, so element-to-line links are mapped from the file's ids.
     const remap = new Map<string, string>();

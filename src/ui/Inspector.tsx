@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import type { Draft } from 'immer';
-import type { DocObject, Fill, GlyphOverride, MarkObject, Page, TextObject } from '../model/types';
+import type { DocObject, Fill, GlyphOverride, MarkObject, Page, PatternKind, TextObject } from '../model/types';
 import { defaultGlyphOverride, PAGE_SIZES } from '../model/defaults';
 import { findElement } from '../model/elements';
 import { applyTextEdit } from '../model/textEdit';
@@ -11,7 +11,9 @@ import { segmentOf } from '../engine/arabic';
 import { segmentStretchKey } from '../engine/variants';
 import { rotateInGroup, scaleInGroup } from '../model/glyphGroup';
 import { emptyRect, unionRect } from '../engine/geom';
+import { PATTERN_LABELS } from '../engine/patterns';
 import { worldBox } from '../render/bounds';
+import { pickFile } from '../io/files';
 import { usePage, useEditor, useSelectedObjects, type GlyphSelection } from '../store/editor';
 import { useFonts } from '../store/fonts';
 import { ColorInput, FillEditor, NumberInput, Row, Section, Segmented, SliderNumber, Toggle } from './controls';
@@ -23,6 +25,7 @@ import { IconCopy, IconKeyboard, IconTrash } from './icons';
 import { applyVariant, useVariants } from './variantActions';
 import { VariantList } from './VariantList';
 import { StrokesSection } from './StrokesSection';
+import { setBackgroundImage } from './actions';
 
 type AnyDraft = Draft<DocObject>;
 
@@ -607,6 +610,7 @@ function PageSection({ page }: { page: Page }) {
   const title = useEditor((s) => s.doc.title);
   const live = (recipe: (p: Draft<Page>) => void) => st.liveEdit((d) => recipe(d.pages[st.pageIndex]));
   const commit = (recipe: (p: Draft<Page>) => void) => st.updatePage(recipe);
+  const bg = page.background;
   const preset = PAGE_SIZES.find((s) => (Math.abs(s.w - page.width) < 0.5 && Math.abs(s.h - page.height) < 0.5) || (Math.abs(s.h - page.width) < 0.5 && Math.abs(s.w - page.height) < 0.5));
   return (
     <>
@@ -662,6 +666,89 @@ function PageSection({ page }: { page: Page }) {
           }}
         >
           تبديل الاتجاه (طولي/عرضي)
+        </button>
+      </Section>
+      <Section title="الخلفية">
+        <Row label="اللون">
+          <ColorInput label="لون الخلفية" value={bg.color} onChange={(c) => live((p) => void (p.background.color = c))} />
+        </Row>
+        <Toggle label="تدرّج لوني" checked={!!bg.gradient} onChange={(v) => commit((p) => void (p.background.gradient = v ? { from: '#fbf6e9', to: '#e8dcc0', angle: 90 } : null))} />
+        {bg.gradient && (
+          <>
+            <div className="grid2">
+              <ColorInput label="بداية التدرج" value={bg.gradient.from} onChange={(c) => live((p) => void (p.background.gradient!.from = c))} />
+              <ColorInput label="نهاية التدرج" value={bg.gradient.to} onChange={(c) => live((p) => void (p.background.gradient!.to = c))} />
+            </div>
+            <Row label="زاوية التدرج">
+              <SliderNumber label="زاوية التدرج" value={bg.gradient.angle} min={0} max={360} unit="°" onChange={(v) => live((p) => void (p.background.gradient!.angle = v))} />
+            </Row>
+          </>
+        )}
+        <Row label="النقش">
+          <select value={bg.pattern.kind} onChange={(e) => commit((p) => void (p.background.pattern.kind = e.target.value as PatternKind))}>
+            {Object.entries(PATTERN_LABELS).map(([k, label]) => (
+              <option key={k} value={k}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </Row>
+        {bg.pattern.kind !== 'none' && (
+          <>
+            <ColorInput label="لون النقش" value={bg.pattern.color} onChange={(c) => live((p) => void (p.background.pattern.color = c))} />
+            <Row label="حجم النقش">
+              <SliderNumber label="حجم النقش" value={bg.pattern.size} min={4} max={80} unit="مم" onChange={(v) => live((p) => void (p.background.pattern.size = v))} />
+            </Row>
+            <Row label="وضوح النقش">
+              <SliderNumber label="وضوح النقش" value={Math.round(bg.pattern.opacity * 100)} min={2} max={100} unit="٪" onChange={(v) => live((p) => void (p.background.pattern.opacity = v / 100))} />
+            </Row>
+          </>
+        )}
+        <div className="btn-row">
+          <button
+            type="button"
+            onClick={async () => {
+              const file = await pickFile('image/png,image/jpeg,image/webp,image/gif');
+              if (file) await setBackgroundImage(file);
+            }}
+          >
+            {bg.image ? 'تغيير الصورة…' : 'صورة خلفية…'}
+          </button>
+          {bg.image && (
+            <button type="button" onClick={() => commit((p) => void (p.background.image = null))}>
+              إزالة الصورة
+            </button>
+          )}
+        </div>
+        {bg.image && (
+          <>
+            <Row label="الملاءمة">
+              <Segmented
+                label="ملاءمة الصورة"
+                value={bg.image.fit}
+                options={[
+                  { value: 'cover', label: 'تغطية' },
+                  { value: 'contain', label: 'احتواء' },
+                  { value: 'stretch', label: 'تمديد' },
+                ]}
+                onChange={(fit) => commit((p) => void (p.background.image!.fit = fit))}
+              />
+            </Row>
+            <Row label="وضوح الصورة">
+              <SliderNumber label="وضوح الصورة" value={Math.round(bg.image.opacity * 100)} min={5} max={100} unit="٪" onChange={(v) => live((p) => void (p.background.image!.opacity = v / 100))} />
+            </Row>
+          </>
+        )}
+        <button
+          type="button"
+          className="link"
+          onClick={() =>
+            st.commit((d) => {
+              for (const p of d.pages) p.background = JSON.parse(JSON.stringify(page.background));
+            })
+          }
+        >
+          تطبيق الخلفية على كل الصفحات
         </button>
       </Section>
     </>

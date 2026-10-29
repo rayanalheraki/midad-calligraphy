@@ -4,6 +4,7 @@ import { getLoadedFont } from '../engine/fonts';
 import { textGeometry } from '../engine/layout';
 import { fmt, matrixToSvg, objectMatrix } from '../engine/geom';
 import { markGeometry } from '../engine/marks';
+import { patternTile } from '../engine/patterns';
 import { strokeLine } from '../engine/strokeLetters';
 import { localBox } from './bounds';
 import { strokeInput } from './strokesInput';
@@ -156,19 +157,78 @@ export const ObjectView = memo(function ObjectView({ o, mode, glyphEdit }: Objec
   }
 });
 
+/** Gradient vector in objectBoundingBox units; 90° runs top to bottom. */
+function bboxGradient(angleDeg: number) {
+  const a = (angleDeg * Math.PI) / 180;
+  return {
+    x1: fmt(0.5 - 0.5 * Math.cos(a)),
+    y1: fmt(0.5 - 0.5 * Math.sin(a)),
+    x2: fmt(0.5 + 0.5 * Math.cos(a)),
+    y2: fmt(0.5 + 0.5 * Math.sin(a)),
+  };
+}
+
+/** Page colour or gradient, background image, then pattern. `transparent` leaves out the colour and gradient. */
+export function PageBackground({ page, transparent }: { page: Page; transparent?: boolean }) {
+  const bg = page.background;
+  const W = fmt(page.width);
+  const H = fmt(page.height);
+  const tile = bg.pattern.kind !== 'none' ? patternTile(bg.pattern.kind, bg.pattern.size) : null;
+  const clipId = `clip-${page.id}`;
+  return (
+    <g>
+      <defs>
+        {bg.gradient && !transparent && (
+          <linearGradient id={`bg-${page.id}`} {...bboxGradient(bg.gradient.angle)}>
+            <stop offset="0" stopColor={bg.gradient.from} />
+            <stop offset="1" stopColor={bg.gradient.to} />
+          </linearGradient>
+        )}
+        {tile && (
+          <pattern id={`pat-${page.id}`} patternUnits="userSpaceOnUse" width={fmt(tile.w)} height={fmt(tile.h)}>
+            <path
+              d={tile.d}
+              fill={tile.mode === 'fill' ? bg.pattern.color : 'none'}
+              stroke={tile.mode === 'stroke' ? bg.pattern.color : 'none'}
+              strokeWidth={fmt(Math.max(0.15, bg.pattern.size * 0.018))}
+            />
+          </pattern>
+        )}
+        <clipPath id={clipId}>
+          <rect x="0" y="0" width={W} height={H} />
+        </clipPath>
+      </defs>
+      {!transparent && <rect x="0" y="0" width={W} height={H} fill={bg.gradient ? `url(#bg-${page.id})` : bg.color} />}
+      {bg.image && (
+        <image
+          href={bg.image.src}
+          x="0"
+          y="0"
+          width={W}
+          height={H}
+          opacity={bg.image.opacity < 1 ? bg.image.opacity : undefined}
+          clipPath={`url(#${clipId})`}
+          preserveAspectRatio={bg.image.fit === 'stretch' ? 'none' : bg.image.fit === 'contain' ? 'xMidYMid meet' : 'xMidYMid slice'}
+        />
+      )}
+      {tile && <rect x="0" y="0" width={W} height={H} fill={`url(#pat-${page.id})`} opacity={bg.pattern.opacity} />}
+    </g>
+  );
+}
+
 interface PageContentProps {
   page: Page;
   mode: RenderMode;
   glyphObjectId?: string | null;
   fontsVersion: number;
-  /** leave out the white paper (transparent export) */
+  /** leave out the page colour and gradient (transparent export) */
   transparent?: boolean;
 }
 
 export function PageContent({ page, mode, glyphObjectId, fontsVersion, transparent }: PageContentProps) {
   return (
     <g>
-      {!transparent && <rect x="0" y="0" width={fmt(page.width)} height={fmt(page.height)} fill="#ffffff" />}
+      <PageBackground page={page} transparent={transparent} />
       {page.objects.map((o) =>
         o.hidden ? null : <ObjectView key={o.id} o={o} mode={mode} glyphEdit={glyphObjectId === o.id} fontsVersion={fontsVersion} />,
       )}

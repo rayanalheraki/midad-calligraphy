@@ -7,6 +7,7 @@ import { KlxError } from '../io/klx';
 import { ensurePageFonts, pageSvgString, printPages, rasterize } from '../io/export';
 import { idbPut, type SavedWork } from '../io/storage';
 import { pickFile } from '../io/files';
+import { readImageFile } from '../io/images';
 import { lastTextStyle, requestTextFocus } from './textDefaults';
 
 const st = () => useEditor.getState();
@@ -116,12 +117,23 @@ export async function printDocument() {
   }
 }
 
-/** Files dropped on the window: projects or KLX files. */
+/** Sets an image file as the current page's background. */
+export async function setBackgroundImage(file: File) {
+  try {
+    const img = await readImageFile(file);
+    st().updatePage((p) => void (p.background.image = { src: img.src, fit: p.background.image?.fit ?? 'cover', opacity: p.background.image?.opacity ?? 1 }));
+  } catch (e) {
+    st().toast(errorText(e), 'error');
+  }
+}
+
+/** Files dropped on the window: projects, KLX files or a background image. */
 export async function handleDroppedFiles(files: FileList) {
   const f = files[0];
   if (!f) return;
   const name = f.name.toLowerCase();
   if (name.endsWith('.klx')) return importKlxFile(f);
   if (name.endsWith('.json') || name.endsWith('.midad')) return openProjectFile(f);
-  st().toast('نوع الملف غير مدعوم. اسحب مشروعًا أو ملف KLX.', 'error');
+  if (f.type.startsWith('image/')) return setBackgroundImage(f);
+  st().toast('نوع الملف غير مدعوم. اسحب مشروعًا أو ملف KLX أو صورة للخلفية.', 'error');
 }

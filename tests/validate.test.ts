@@ -13,15 +13,37 @@ describe('project validation', () => {
     expect(out.pages[0].objects[0]).toMatchObject({ type: 'text', text: 'السلام عليكم', size: 30 });
   });
 
-  it('drops images and page backgrounds from older files', () => {
+  it('keeps page backgrounds and drops image objects of older files', () => {
     const doc = createDoc();
     const raw = JSON.parse(JSON.stringify(doc));
-    raw.pages[0].background = { color: '#ff0000', pattern: { kind: 'stars8' } };
+    raw.pages[0].background = {
+      color: '#FF0000',
+      gradient: { from: '#000000', to: 'red', angle: 900 },
+      pattern: { kind: 'stars8', size: 1, opacity: 5 },
+      image: { src: 'data:image/png;base64,iVBORw0KGgo=', fit: 'contain', opacity: 0.5 },
+    };
     raw.pages[0].objects.push({ type: 'image', src: 'data:image/png;base64,iVBORw0KGgo=', w: 10, h: 10 });
     raw.pages[0].objects.push(createText({ text: 'خط' }));
     const { doc: out, warnings } = validateDoc(raw);
     expect(out.pages[0].objects.map((o) => o.type)).toEqual(['text']);
-    expect('background' in out.pages[0]).toBe(false);
+    expect(out.pages[0].background).toEqual({
+      color: '#ff0000',
+      gradient: { from: '#000000', to: '#e9edf5', angle: 360 },
+      pattern: { kind: 'stars8', color: '#1f3a73', size: 3, opacity: 1 },
+      image: { src: 'data:image/png;base64,iVBORw0KGgo=', fit: 'contain', opacity: 0.5 },
+    });
+    expect(warnings.length).toBe(1);
+  });
+
+  it('drops unsafe background images and fills in a missing background', () => {
+    const doc = createDoc();
+    doc.pages.push(createDoc().pages[0]);
+    const raw = JSON.parse(JSON.stringify(doc));
+    raw.pages[0].background.image = { src: 'data:image/svg+xml;base64,PHN2Zz4=', fit: 'cover', opacity: 1 };
+    delete raw.pages[1].background;
+    const { doc: out, warnings } = validateDoc(raw);
+    expect(out.pages[0].background.image).toBeNull();
+    expect(out.pages[1].background).toEqual(createDoc().pages[0].background);
     expect(warnings.length).toBe(1);
   });
 
