@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
 import { findFontDef, getLoadedFont, loadFontFromBuffer, type LoadedFont } from '../src/engine/fonts';
 
 const require = createRequire(import.meta.url);
@@ -9,7 +10,8 @@ export async function loadTestFont(id: string): Promise<LoadedFont> {
   if (ready) return ready;
   const def = findFontDef(id);
   if (!def?.file) throw new Error('unknown font ' + id);
-  const data = readFileSync(require.resolve(def.file));
+  const path = def.file.startsWith('./') ? fileURLToPath(new URL('../' + def.file.slice(2), import.meta.url)) : require.resolve(def.file);
+  const data = readFileSync(path);
   return loadFontFromBuffer(def, data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength));
 }
 

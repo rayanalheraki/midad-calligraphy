@@ -4,7 +4,7 @@ import { useEditor } from '../store/editor';
 import { useFonts } from '../store/fonts';
 import {
   importKlxFile,
-  insertImage,
+  insertStrokesLine,
   insertTextLine,
   newDocument,
   openProjectFile,
@@ -170,8 +170,8 @@ export function TopBar() {
           setOpen={setOpen}
           items={[
             { label: 'سطر خطي', shortcut: 'T', onClick: insertTextLine },
+            { label: 'سطر بضربات القلم (تجريبي)', onClick: insertStrokesLine },
             { label: 'حركة أو عنصر منفصل…', shortcut: 'M', onClick: () => st.setTool('mark') },
-            { label: 'صورة…', onClick: () => insertImage() },
           ]}
         />
         <MenuButton
@@ -180,7 +180,7 @@ export function TopBar() {
           open={open}
           setOpen={setOpen}
           items={[
-            { label: 'إعداد الصفحة والخلفية', onClick: () => st.select([]) },
+            { label: 'إعداد الصفحة', onClick: () => st.select([]) },
             { label: 'صفحة جديدة', onClick: st.addPage },
             { label: 'تكرار الصفحة', onClick: st.duplicatePage },
             { label: 'حذف الصفحة', onClick: st.removePage, disabled: pages <= 1 },

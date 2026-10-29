@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { Draft } from 'immer';
 import type { TextObject } from './model/types';
-import { createDoc } from './model/defaults';
+import { createDoc, defaultGlyphOverride } from './model/defaults';
 import { TEMPLATES } from './model/templates';
 import { useEditor, withAttached } from './store/editor';
 import { useFonts } from './store/fonts';
@@ -35,7 +35,7 @@ function nudge(dx: number, dy: number) {
     st.updateObject(objectId, (d) => {
       const t = d as Draft<TextObject>;
       for (const k of keys) {
-        const g = t.glyphs[k] ?? { dx: 0, dy: 0, rotate: 0, scale: 1, color: null, hidden: false };
+        const g = t.glyphs[k] ?? defaultGlyphOverride();
         t.glyphs[k] = { ...g, dx: g.dx + dx * 0.2, dy: g.dy + dy * 0.2 };
       }
     });
@@ -176,12 +176,15 @@ export function App() {
             const { objectId, keys } = st.glyphSel;
             st.updateObject(objectId, (d) => {
               const t = d as Draft<TextObject>;
-              for (const k of keys) t.glyphs[k] = { ...(t.glyphs[k] ?? { dx: 0, dy: 0, rotate: 0, scale: 1, color: null }), hidden: true };
+              for (const k of keys) t.glyphs[k] = { ...(t.glyphs[k] ?? defaultGlyphOverride()), hidden: true };
             });
           } else st.removeSelected();
           return;
         case 'Escape':
-          if (st.tool === 'glyph' || st.tool === 'mark') st.setTool('select');
+          if (st.tool === 'glyph' && st.glyphSel?.level === 'letter') {
+            // Back from one letter to its whole segment, then out of the tool.
+            window.dispatchEvent(new CustomEvent('midad:segment-level'));
+          } else if (st.tool === 'glyph' || st.tool === 'stretch' || st.tool === 'mark') st.setTool('select');
           else st.select([]);
           return;
         case 'ArrowLeft':
@@ -205,6 +208,17 @@ export function App() {
           return;
         case 'KeyG':
           st.setTool('glyph');
+          return;
+        case 'KeyE':
+          st.setTool('stretch');
+          return;
+        case 'BracketLeft':
+        case 'BracketRight':
+          // Previous / next alternate of the selected segment or letter.
+          if (st.tool === 'glyph' && st.glyphSel?.keys.length) {
+            e.preventDefault();
+            window.dispatchEvent(new CustomEvent('midad:cycle-variant', { detail: e.code === 'BracketLeft' ? -1 : 1 }));
+          }
           return;
         case 'KeyT':
           st.setTool('text');

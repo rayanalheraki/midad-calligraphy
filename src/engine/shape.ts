@@ -41,6 +41,19 @@ function isMarkGlyph(lf: LoadedFont, gid: number): boolean {
   return v;
 }
 
+const FEATURE_RE = /^(-)?([a-z0-9]{4})(?:=(\d{1,3}))?(?:@(\d+):(\d+))?$/;
+
+/**
+ * Feature settings as strings: "ss01" turns a feature on, "-liga" off, "salt=2" picks the
+ * second alternate, and a "@start:end" suffix limits it to that UTF-16 range of the text.
+ */
+function parseFeature(hb: LoadedFont['hb'], spec: string) {
+  const m = FEATURE_RE.exec(spec);
+  if (!m) return null;
+  const value = m[1] ? 0 : m[3] ? Number(m[3]) : 1;
+  return m[4] !== undefined ? new hb.Feature(m[2], value, Number(m[4]), Number(m[5])) : new hb.Feature(m[2], value);
+}
+
 export function shapeText(lf: LoadedFont, text: string, features: string[]): ShapedRun {
   const key = `${lf.def.id}|${features.join(',')}|${text}`;
   const hit = runCache.get(key);
@@ -49,6 +62,27 @@ export function shapeText(lf: LoadedFont, text: string, features: string[]): Sha
     runCache.set(key, hit);
     return hit;
   }
+  let run = shapeOnce(lf, text, features);
+  // Some fonts ship ligatures without an outline (an empty «الله» in the Layla fonts):
+  // shape those words again without optional ligatures so the letters show.
+  const empty = run.glyphs.filter((g) => !g.mark && g.ax === 0 && !glyphOutline(lf, g.gid).box && /\S/.test(text[g.cluster] ?? ''));
+  if (empty.length) {
+    const clusters = [...new Set(run.glyphs.map((g) => g.cluster))].sort((a, b) => a - b);
+    const off = empty.map((g) => {
+      const end = clusters.find((c) => c > g.cluster) ?? text.length;
+      return `-liga@${g.cluster}:${end}`;
+    });
+    run = shapeOnce(lf, text, [...features, ...off]);
+  }
+  runCache.set(key, run);
+  if (runCache.size > RUN_CACHE_LIMIT) {
+    const oldest = runCache.keys().next().value;
+    if (oldest !== undefined) runCache.delete(oldest);
+  }
+  return run;
+}
+
+function shapeOnce(lf: LoadedFont, text: string, features: string[]): ShapedRun {
   const { hb } = lf;
   const buf = new hb.Buffer();
   buf.addText(text);
@@ -59,7 +93,7 @@ export function shapeText(lf: LoadedFont, text: string, features: string[]): Sha
   buf.setFlags(
     hb.BufferFlag.BOT | hb.BufferFlag.EOT | hb.BufferFlag.DO_NOT_INSERT_DOTTED_CIRCLE | hb.BufferFlag.PRODUCE_SAFE_TO_INSERT_TATWEEL,
   );
-  hb.shape(lf.font, buf, features.map((f) => new hb.Feature(f, 1)));
+  hb.shape(lf.font, buf, features.map((f) => parseFeature(hb, f)).filter((f) => f !== null));
   const raw = buf.getGlyphInfosAndPositions();
   const glyphs: ShapedGlyph[] = [];
   let width = 0;
@@ -76,13 +110,7 @@ export function shapeText(lf: LoadedFont, text: string, features: string[]): Sha
     });
     width += ax;
   }
-  const run = { glyphs, width };
-  runCache.set(key, run);
-  if (runCache.size > RUN_CACHE_LIMIT) {
-    const oldest = runCache.keys().next().value;
-    if (oldest !== undefined) runCache.delete(oldest);
-  }
-  return run;
+  return { glyphs, width };
 }
 
 export function glyphOutline(lf: LoadedFont, gid: number): GlyphOutline {

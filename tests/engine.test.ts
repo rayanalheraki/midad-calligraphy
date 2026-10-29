@@ -4,7 +4,7 @@ import type { LoadedFont } from '../src/engine/fonts';
 import { computeTextGeometry } from '../src/engine/layout';
 import { markGeometry } from '../src/engine/marks';
 import { shapeText } from '../src/engine/shape';
-import { createMark, createText } from '../src/model/defaults';
+import { createMark, createText, defaultGlyphOverride } from '../src/model/defaults';
 import { ELEMENTS, findElement, markFromElement } from '../src/model/elements';
 import { loadTestFont } from './helpers';
 
@@ -91,7 +91,7 @@ describe('shaping and layout', () => {
     const base = createText({ text: 'بسم' });
     const g0 = computeTextGeometry(base, amiri);
     const key = g0.glyphs[0].key;
-    const moved = computeTextGeometry({ ...base, glyphs: { [key]: { dx: 5, dy: -3, rotate: 0, scale: 1, color: '#ff0000', hidden: false } } }, amiri);
+    const moved = computeTextGeometry({ ...base, glyphs: { [key]: { ...defaultGlyphOverride(), dx: 5, dy: -3, color: '#ff0000' } } }, amiri);
     const a = g0.glyphs.find((g) => g.key === key)!;
     const b = moved.glyphs.find((g) => g.key === key)!;
     expect(b.center.x - a.center.x).toBeCloseTo(5, 3);

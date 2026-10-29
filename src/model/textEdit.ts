@@ -2,8 +2,8 @@ import type { Draft } from 'immer';
 import type { TextObject } from './types';
 
 /**
- * Replaces the text of a line while keeping per-letter edits (glyph overrides and manual
- * kashida) attached to the same letters: indices after the edited range are shifted,
+ * Replaces the text of a line while keeping per-letter edits (glyph overrides, manual
+ * kashida and segment variants) attached to the same letters: indices after the edited range are shifted,
  * edits inside the range are dropped.
  */
 export function applyTextEdit(o: Draft<TextObject>, next: string): void {
@@ -29,7 +29,13 @@ export function applyTextEdit(o: Draft<TextObject>, next: string): void {
     const n = shift(Number(key));
     if (n !== null) kashidaAt[String(n)] = count;
   }
+  const segVariants: TextObject['segVariants'] = {};
+  for (const [key, specs] of Object.entries(o.segVariants)) {
+    const n = shift(Number(key));
+    if (n !== null) segVariants[String(n)] = specs;
+  }
   o.text = next;
   o.glyphs = glyphs;
   o.kashidaAt = kashidaAt;
+  o.segVariants = segVariants;
 }

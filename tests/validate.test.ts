@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createDoc, createImage, createMark, createText } from '../src/model/defaults';
+import { createDoc, createMark, createText, defaultGlyphOverride } from '../src/model/defaults';
 import { TEMPLATES } from '../src/model/templates';
 import { withAttached } from '../src/store/editor';
 import { validateDoc } from '../src/model/validate';
@@ -13,14 +13,35 @@ describe('project validation', () => {
     expect(out.pages[0].objects[0]).toMatchObject({ type: 'text', text: 'السلام عليكم', size: 30 });
   });
 
-  it('drops images whose source is not an embedded raster image', () => {
+  it('drops images and page backgrounds from older files', () => {
     const doc = createDoc();
-    doc.pages[0].objects.push(createImage('javascript:alert(1)', 10, 10));
-    doc.pages[0].objects.push(createImage('https://example.com/x.png', 10, 10));
-    doc.pages[0].objects.push(createImage('data:image/svg+xml;base64,PHN2Zz48c2NyaXB0Lz48L3N2Zz4=', 10, 10));
-    doc.pages[0].objects.push(createImage('data:image/png;base64,iVBORw0KGgo=', 10, 10));
-    const { doc: out } = validateDoc(JSON.parse(JSON.stringify(doc)));
-    expect(out.pages[0].objects).toHaveLength(1);
+    const raw = JSON.parse(JSON.stringify(doc));
+    raw.pages[0].background = { color: '#ff0000', pattern: { kind: 'stars8' } };
+    raw.pages[0].objects.push({ type: 'image', src: 'data:image/png;base64,iVBORw0KGgo=', w: 10, h: 10 });
+    raw.pages[0].objects.push(createText({ text: 'خط' }));
+    const { doc: out, warnings } = validateDoc(raw);
+    expect(out.pages[0].objects.map((o) => o.type)).toEqual(['text']);
+    expect('background' in out.pages[0]).toBe(false);
+    expect(warnings.length).toBe(1);
+  });
+
+  it('keeps valid alternates, stretches and segment variants and drops malformed ones', () => {
+    const t = createText({
+      text: 'بسم الله',
+      segVariants: { '0': ['ss01', '-liga', 'salt=2', 'bad feature', 'x@1:2'], '4': ['<script>'], abc: ['ss02'] },
+      glyphs: {
+        '0.0': { ...defaultGlyphOverride(), alt: 'uni0628.alt', stretch: 1.5 },
+        '1.0': { ...defaultGlyphOverride(), alt: 'bad name with spaces', stretch: 99 },
+      },
+    });
+    const doc = createDoc();
+    doc.pages[0].objects.push(t);
+    const out = validateDoc(JSON.parse(JSON.stringify(doc))).doc.pages[0].objects[0];
+    if (out.type !== 'text') throw new Error('expected text');
+    expect(out.segVariants).toEqual({ '0': ['ss01', '-liga', 'salt=2'] });
+    expect(out.glyphs['0.0']).toMatchObject({ alt: 'uni0628.alt', stretch: 1.5 });
+    expect(out.glyphs['1.0'].alt).toBeNull();
+    expect(out.glyphs['1.0'].stretch).toBe(8);
   });
 
   it('clamps numbers, sanitises colours and ignores unknown fields', () => {

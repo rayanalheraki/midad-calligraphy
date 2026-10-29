@@ -1,23 +1,27 @@
 import { useEffect, useRef } from 'react';
 import type { Draft } from 'immer';
-import type { DocObject, Fill, ImageObject, MarkObject, Page, TextObject } from '../model/types';
+import type { DocObject, Fill, GlyphOverride, MarkObject, Page, TextObject } from '../model/types';
 import { defaultGlyphOverride, PAGE_SIZES } from '../model/defaults';
 import { findElement } from '../model/elements';
 import { applyTextEdit } from '../model/textEdit';
 import { featureLabel, findFontDef, getLoadedFont } from '../engine/fonts';
-import { kashidaSlots, textGeometry } from '../engine/layout';
+import { kashidaSlots, MAX_STRETCH_EM, textGeometry } from '../engine/layout';
+import { segmentOf } from '../engine/arabic';
+import { segmentStretchKey } from '../engine/variants';
+import { rotateInGroup, scaleInGroup } from '../model/glyphGroup';
 import { emptyRect, unionRect } from '../engine/geom';
-import { PATTERN_LABELS } from '../engine/patterns';
 import { worldBox } from '../render/bounds';
-import { pickFile, readImageFile } from '../io/images';
-import { usePage, useEditor, useSelectedObjects } from '../store/editor';
+import { usePage, useEditor, useSelectedObjects, type GlyphSelection } from '../store/editor';
 import { useFonts } from '../store/fonts';
 import { ColorInput, FillEditor, NumberInput, Row, Section, Segmented, SliderNumber, Toggle } from './controls';
 import { FontPicker } from './FontPicker';
 import { MarksPalette } from './MarksPalette';
 import { ElementsPalette } from './ElementsPalette';
-import { rememberTextStyle, textCaret } from './textDefaults';
+import { pendingTextFocus, rememberTextStyle, textCaret } from './textDefaults';
 import { IconCopy, IconKeyboard, IconTrash } from './icons';
+import { applyVariant, useVariants } from './variantActions';
+import { VariantList } from './VariantList';
+import { StrokesSection } from './StrokesSection';
 
 type AnyDraft = Draft<DocObject>;
 
@@ -92,9 +96,12 @@ function TextSection({ o }: { o: TextObject }) {
     const focus = () => {
       const el = areaRef.current;
       if (!el) return;
+      pendingTextFocus.objectId = '';
       el.focus();
       el.select();
     };
+    // A line added a moment ago: its panel mounts after the request was made.
+    if (pendingTextFocus.objectId === o.id) setTimeout(focus, 0);
     const caret = () => {
       const el = areaRef.current;
       if (!el || textCaret.objectId !== o.id) return;
@@ -128,7 +135,6 @@ function TextSection({ o }: { o: TextObject }) {
           dir="rtl"
           rows={3}
           value={o.text}
-          style={lf ? { fontFamily: `"${lf.cssFamily}", var(--font-ui)` } : undefined}
           placeholder="اكتب النص الذي تريد تخطيطه"
           onFocus={() => useEditor.getState().beginGesture()}
           onBlur={() => {
@@ -150,7 +156,7 @@ function TextSection({ o }: { o: TextObject }) {
             <IconKeyboard /> لوحة المفاتيح
           </button>
           <button type="button" onClick={() => useEditor.getState().setTool('glyph')}>
-            تحرير الحروف
+            تحرير المقاطع والحروف
           </button>
         </div>
       </Section>
@@ -355,112 +361,157 @@ function ShadowControls({ o }: { o: TextObject }) {
   );
 }
 
-function GlyphSection({ o, keys }: { o: TextObject; keys: string[] }) {
+function GlyphSection({ o, sel }: { o: TextObject; sel: GlyphSelection }) {
   const { live, commit } = ops(o.id);
+  const variants = useVariants(o, sel);
   const lf = getLoadedFont(o.fontId);
   if (!lf) return null;
+  const keys = sel.keys;
   const geo = textGeometry(o, lf);
-  const sel = geo.glyphs.filter((g) => keys.includes(g.key));
-  const first = sel[0];
+  const chosen = geo.glyphs.filter((g) => keys.includes(g.key));
+  const first = chosen[0];
   const ov = (first && o.glyphs[first.key]) || defaultGlyphOverride();
-  const setAll = (patch: Partial<typeof ov>, liveMode = true) => {
+  const segment = sel.level === 'segment';
+  const segs = [...new Set(chosen.map((g) => g.seg).filter((s) => s >= 0))];
+  const segOf = segmentOf(o.text);
+  const segText = (seg: number) => {
+    let t = '';
+    for (let i = 0; i < o.text.length; i++) if (segOf[i] === seg) t += o.text[i];
+    return t;
+  };
+  const title = segment
+    ? segs.length > 1
+      ? `${segs.length} مقاطع محددة`
+      : `المقطع «${segText(segs[0] ?? -1)}»`
+    : chosen.length > 1
+      ? `${chosen.length} أجزاء محددة`
+      : `الحرف «${first ? o.text[first.origin] ?? '' : ''}»`;
+
+  const stretchKey = segment
+    ? segs.length === 1
+      ? segmentStretchKey(o, geo, segs[0])
+      : null
+    : first && first.stretchable && !first.mark
+      ? first.key
+      : null;
+  const stretchMm = stretchKey ? (o.glyphs[stretchKey]?.stretch ?? 0) * o.size : 0;
+
+  // Group centre and each glyph's own centre, for turning and resizing as one piece.
+  const box = chosen.reduce((acc, g) => unionRect(acc, g.bbox), emptyRect());
+  const center = { x: (box.minX + box.maxX) / 2, y: (box.minY + box.maxY) / 2 };
+  const update = (fn: (prev: GlyphOverride, key: string) => GlyphOverride, liveMode = true) => {
     const recipe = (d: AnyDraft) => {
       const t = d as TextObject;
-      for (const k of keys) t.glyphs[k] = { ...(t.glyphs[k] ?? defaultGlyphOverride()), ...patch };
+      for (const k of keys) t.glyphs[k] = fn(t.glyphs[k] ?? defaultGlyphOverride(), k);
     };
     if (liveMode) live(recipe);
     else commit(recipe);
   };
-  const letterIdx = first && !first.kashida ? first.origin : -1;
+  const centers = new Map(chosen.map((g) => [g.key, g.baseCenter]));
+
+  const letterIdx = first && !first.kashida && !segment ? first.origin : -1;
   const slot = lf.def.kashida && letterIdx >= 0 ? kashidaSlots(o.text).find((s) => s.letter === letterIdx) : undefined;
   const manual = slot ? o.kashidaAt[String(letterIdx)] ?? 0 : 0;
   const st = useEditor.getState();
   return (
-    <Section title={sel.length > 1 ? `${sel.length} أجزاء محددة` : `الجزء المحدد «${first ? o.text[first.origin] ?? '' : ''}»`}>
-      {first?.mark && <p className="note">هذه حركة أو علامة؛ يمكنك تحريكها بحرية فوق الحرف.</p>}
-      <div className="grid2">
-        <Row label="إزاحة أفقية">
-          <NumberInput label="إزاحة أفقية" value={ov.dx} step={0.2} unit="مم" onChange={(v) => setAll({ dx: v })} />
+    <>
+      <Section title={title}>
+        <p className="note">
+          {segment ? 'نقرة تحدد المقطع كاملًا، ونقرتان على حرف تحددانه وحده.' : 'حرف واحد محدد؛ اضغط Esc للعودة إلى المقطع.'}
+          {first?.mark && ' هذه حركة أو نقطة؛ اسحبها لتغيير موضعها فوق الحرف.'}
+        </p>
+        <div className="sub-title">{segment ? 'بدائل المقطع' : 'بدائل الحرف'}</div>
+        {variants.length > 1 ? (
+          <VariantList variants={variants} onPick={(v) => applyVariant(o, sel, v)} />
+        ) : (
+          <p className="note">لا يقدّم هذا الخط أشكالًا بديلة {segment ? 'لهذا المقطع' : 'لهذا الحرف'}.</p>
+        )}
+        <div className="sub-title">المدّ</div>
+        {stretchKey ? (
+          <Row label={segment ? 'مدّ المقطع' : 'مدّ الحرف'}>
+            <SliderNumber
+              label="مقدار المدّ"
+              value={Math.round(stretchMm * 10) / 10}
+              min={0}
+              max={Math.round(o.size * MAX_STRETCH_EM)}
+              step={0.2}
+              unit="مم"
+              onChange={(v) =>
+                live((d) => {
+                  const t = d as TextObject;
+                  t.glyphs[stretchKey] = { ...(t.glyphs[stretchKey] ?? defaultGlyphOverride()), stretch: Math.max(0, v / o.size) };
+                })
+              }
+            />
+          </Row>
+        ) : (
+          <p className="note">{segment ? 'لا يحتوي هذا المقطع حرفًا قابلًا للمدّ.' : 'هذا الحرف غير قابل للمدّ.'}</p>
+        )}
+        {slot && (
+          <Row label="كشيدة بعد الحرف">
+            <div className="stepper">
+              <button type="button" aria-label="إنقاص الكشيدة" onClick={() => commit((d) => void ((d as TextObject).kashidaAt[String(letterIdx)] = Math.max(0, manual - 1)))}>
+                −
+              </button>
+              <span>{manual}</span>
+              <button type="button" aria-label="زيادة الكشيدة" onClick={() => commit((d) => void ((d as TextObject).kashidaAt[String(letterIdx)] = Math.min(24, manual + 1)))}>
+                +
+              </button>
+            </div>
+          </Row>
+        )}
+      </Section>
+      <Section title="الموضع والهيئة">
+        <div className="grid2">
+          <Row label="إزاحة أفقية">
+            <NumberInput label="إزاحة أفقية" value={ov.dx} step={0.2} unit="مم" onChange={(v) => update((p) => ({ ...p, dx: p.dx + v - ov.dx }))} />
+          </Row>
+          <Row label="إزاحة رأسية">
+            <NumberInput label="إزاحة رأسية" value={ov.dy} step={0.2} unit="مم" onChange={(v) => update((p) => ({ ...p, dy: p.dy + v - ov.dy }))} />
+          </Row>
+        </div>
+        <Row label="الدوران">
+          <SliderNumber
+            label="دوران الجزء"
+            value={ov.rotate}
+            min={-180}
+            max={180}
+            unit="°"
+            onChange={(v) => update((p, k) => (centers.has(k) ? rotateInGroup(p, centers.get(k)!, center, v - ov.rotate) : p))}
+          />
         </Row>
-        <Row label="إزاحة رأسية">
-          <NumberInput label="إزاحة رأسية" value={ov.dy} step={0.2} unit="مم" onChange={(v) => setAll({ dy: v })} />
+        <Row label="الحجم">
+          <SliderNumber
+            label="حجم الجزء"
+            value={Math.round(ov.scale * 100)}
+            min={20}
+            max={300}
+            unit="٪"
+            onChange={(v) => update((p, k) => (centers.has(k) ? scaleInGroup(p, centers.get(k)!, center, v / 100 / (ov.scale || 1)) : p))}
+          />
         </Row>
-      </div>
-      <Row label="الدوران">
-        <SliderNumber label="دوران الجزء" value={ov.rotate} min={-180} max={180} unit="°" onChange={(v) => setAll({ rotate: v })} />
-      </Row>
-      <Row label="الحجم">
-        <SliderNumber label="حجم الجزء" value={Math.round(ov.scale * 100)} min={20} max={300} unit="٪" onChange={(v) => setAll({ scale: v / 100 })} />
-      </Row>
-      <Toggle label="لون خاص" checked={ov.color !== null} onChange={(v) => setAll({ color: v ? '#b4402f' : null }, false)} />
-      {ov.color !== null && <ColorInput label="لون الجزء" value={ov.color} onChange={(c) => setAll({ color: c })} />}
-      <Toggle label="إخفاء" checked={ov.hidden} onChange={(v) => setAll({ hidden: v }, false)} />
-      {slot && (
-        <Row label="كشيدة بعد الحرف">
-          <div className="stepper">
-            <button type="button" aria-label="إنقاص الكشيدة" onClick={() => commit((d) => void ((d as TextObject).kashidaAt[String(letterIdx)] = Math.max(0, manual - 1)))}>
-              −
-            </button>
-            <span>{manual}</span>
-            <button type="button" aria-label="زيادة الكشيدة" onClick={() => commit((d) => void ((d as TextObject).kashidaAt[String(letterIdx)] = Math.min(24, manual + 1)))}>
-              +
-            </button>
-          </div>
-        </Row>
-      )}
-      <div className="btn-row">
-        <button
-          type="button"
-          onClick={() =>
-            commit((d) => {
-              const t = d as TextObject;
-              for (const k of keys) delete t.glyphs[k];
-            })
-          }
-        >
-          إعادة الضبط
-        </button>
-        <button type="button" onClick={() => st.setGlyphSel({ objectId: o.id, keys: geo.glyphs.filter((g) => g.mark).map((g) => g.key) })}>
-          تحديد كل الحركات
-        </button>
-      </div>
-    </Section>
-  );
-}
-
-function ImageSection({ o }: { o: ImageObject }) {
-  const { live, commit } = ops(o.id);
-  const ratio = o.h / o.w;
-  return (
-    <Section title="الصورة">
-      <div className="grid2">
-        <Row label="العرض">
-          <NumberInput label="عرض الصورة" value={o.w} min={1} max={5000} unit="مم" onChange={(v) => live((d) => void (((d as ImageObject).w = v), ((d as ImageObject).h = v * ratio)))} />
-        </Row>
-        <Row label="الارتفاع">
-          <NumberInput label="ارتفاع الصورة" value={o.h} min={1} max={5000} unit="مم" onChange={(v) => live((d) => void (((d as ImageObject).h = v), ((d as ImageObject).w = v / ratio)))} />
-        </Row>
-      </div>
-      <button
-        type="button"
-        onClick={async () => {
-          const file = await pickFile('image/png,image/jpeg,image/webp,image/gif');
-          if (!file) return;
-          try {
-            const img = await readImageFile(file);
-            commit((d) => {
-              const im = d as ImageObject;
-              im.src = img.src;
-              im.h = (im.w * img.heightPx) / img.widthPx;
-            });
-          } catch (e) {
-            useEditor.getState().toast((e as Error).message, 'error');
-          }
-        }}
-      >
-        استبدال الصورة…
-      </button>
-    </Section>
+        <Toggle label="لون خاص" checked={ov.color !== null} onChange={(v) => update((p) => ({ ...p, color: v ? '#b4402f' : null }), false)} />
+        {ov.color !== null && <ColorInput label="لون الجزء" value={ov.color} onChange={(c) => update((p) => ({ ...p, color: c }))} />}
+        <Toggle label="إخفاء" checked={ov.hidden} onChange={(v) => update((p) => ({ ...p, hidden: v }), false)} />
+        <div className="btn-row">
+          <button
+            type="button"
+            onClick={() =>
+              commit((d) => {
+                const t = d as TextObject;
+                for (const k of keys) delete t.glyphs[k];
+                if (segment) for (const sg of segs) delete t.segVariants[String(sg)];
+              })
+            }
+          >
+            إعادة الضبط
+          </button>
+          <button type="button" onClick={() => st.setGlyphSel({ objectId: o.id, keys: geo.glyphs.filter((g) => g.mark).map((g) => g.key), level: 'letter' })}>
+            تحديد كل الحركات
+          </button>
+        </div>
+      </Section>
+    </>
   );
 }
 
@@ -530,7 +581,6 @@ function PageSection({ page }: { page: Page }) {
   const title = useEditor((s) => s.doc.title);
   const live = (recipe: (p: Draft<Page>) => void) => st.liveEdit((d) => recipe(d.pages[st.pageIndex]));
   const commit = (recipe: (p: Draft<Page>) => void) => st.updatePage(recipe);
-  const bg = page.background;
   const preset = PAGE_SIZES.find((s) => (Math.abs(s.w - page.width) < 0.5 && Math.abs(s.h - page.height) < 0.5) || (Math.abs(s.h - page.width) < 0.5 && Math.abs(s.w - page.height) < 0.5));
   return (
     <>
@@ -586,85 +636,6 @@ function PageSection({ page }: { page: Page }) {
           }}
         >
           تبديل الاتجاه (طولي/عرضي)
-        </button>
-      </Section>
-      <Section title="الخلفية">
-        <Row label="اللون">
-          <ColorInput label="لون الخلفية" value={bg.color} onChange={(c) => live((p) => void (p.background.color = c))} />
-        </Row>
-        <Toggle label="تدرّج لوني" checked={!!bg.gradient} onChange={(v) => commit((p) => void (p.background.gradient = v ? { from: '#fbf6e9', to: '#e8dcc0', angle: 90 } : null))} />
-        {bg.gradient && (
-          <div className="grid2">
-            <ColorInput label="بداية التدرج" value={bg.gradient.from} onChange={(c) => live((p) => void (p.background.gradient!.from = c))} />
-            <ColorInput label="نهاية التدرج" value={bg.gradient.to} onChange={(c) => live((p) => void (p.background.gradient!.to = c))} />
-          </div>
-        )}
-        <Row label="النقش">
-          <select value={bg.pattern.kind} onChange={(e) => commit((p) => void (p.background.pattern.kind = e.target.value as Page['background']['pattern']['kind']))}>
-            {Object.entries(PATTERN_LABELS).map(([k, label]) => (
-              <option key={k} value={k}>
-                {label}
-              </option>
-            ))}
-          </select>
-        </Row>
-        {bg.pattern.kind !== 'none' && (
-          <>
-            <ColorInput label="لون النقش" value={bg.pattern.color} onChange={(c) => live((p) => void (p.background.pattern.color = c))} />
-            <Row label="حجم النقش">
-              <SliderNumber label="حجم النقش" value={bg.pattern.size} min={4} max={80} unit="مم" onChange={(v) => live((p) => void (p.background.pattern.size = v))} />
-            </Row>
-            <Row label="وضوح النقش">
-              <SliderNumber label="وضوح النقش" value={Math.round(bg.pattern.opacity * 100)} min={2} max={100} unit="٪" onChange={(v) => live((p) => void (p.background.pattern.opacity = v / 100))} />
-            </Row>
-          </>
-        )}
-        <div className="btn-row">
-          <button
-            type="button"
-            onClick={async () => {
-              const file = await pickFile('image/png,image/jpeg,image/webp,image/gif');
-              if (!file) return;
-              try {
-                const img = await readImageFile(file);
-                commit((p) => void (p.background.image = { src: img.src, fit: 'cover', opacity: 1 }));
-              } catch (e) {
-                st.toast((e as Error).message, 'error');
-              }
-            }}
-          >
-            صورة خلفية…
-          </button>
-          {bg.image && (
-            <button type="button" onClick={() => commit((p) => void (p.background.image = null))}>
-              إزالة الصورة
-            </button>
-          )}
-        </div>
-        {bg.image && (
-          <Row label="الملاءمة">
-            <Segmented
-              label="ملاءمة الصورة"
-              value={bg.image.fit}
-              options={[
-                { value: 'cover', label: 'تغطية' },
-                { value: 'contain', label: 'احتواء' },
-                { value: 'stretch', label: 'تمديد' },
-              ]}
-              onChange={(fit) => commit((p) => void (p.background.image!.fit = fit))}
-            />
-          </Row>
-        )}
-        <button
-          type="button"
-          className="link"
-          onClick={() =>
-            st.commit((d) => {
-              for (const p of d.pages) p.background = JSON.parse(JSON.stringify(page.background));
-            })
-          }
-        >
-          تطبيق الخلفية على كل الصفحات
         </button>
       </Section>
     </>
@@ -750,13 +721,16 @@ export function Inspector() {
     const o = selected[0];
     body = (
       <>
-        {tool === 'glyph' && o.type === 'text' && glyphSel?.objectId === o.id && glyphSel.keys.length > 0 && <GlyphSection o={o} keys={glyphSel.keys} />}
+        {tool === 'stretch' && (
+          <p className="hint-card">اسحب حرفًا نحو اليسار لمدّه ونحو اليمين لتقصيره. الحروف المظلَّلة قابلة للمدّ، وإن سحبت حرفًا غيرها مُدّ أنسب حرف في مقطعه.</p>
+        )}
+        {(tool === 'glyph' || tool === 'stretch') && o.type === 'text' && glyphSel?.objectId === o.id && glyphSel.keys.length > 0 && <GlyphSection o={o} sel={glyphSel} />}
         {tool === 'glyph' && o.type === 'text' && !(glyphSel?.keys.length) && (
-          <p className="hint-card">انقر حرفًا أو نقطة أو حركة لتحديدها، ثم اسحبها لتغيير موضعها. استخدم Shift لتحديد أكثر من جزء، وEsc للخروج من وضع تحرير الحروف.</p>
+          <p className="hint-card">انقر مقطعًا لتحديده وتحريكه وعرض بدائله، وانقر مرتين على حرف لتحديده وحده. Shift لإضافة مقطع آخر، و[ ] للتنقل بين البدائل، وEsc للخروج.</p>
         )}
         {o.type === 'text' && <TextSection o={o} />}
         {o.type === 'mark' && <MarkSection o={o} />}
-        {o.type === 'image' && <ImageSection o={o} />}
+        {o.type === 'strokes' && <StrokesSection o={o} />}
         <TransformSection o={o} />
         <ObjectActions o={o} />
       </>

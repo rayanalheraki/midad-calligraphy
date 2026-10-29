@@ -348,10 +348,6 @@ textarea {
   cursor: grab;
 }
 
-.stage.tool-pen {
-  cursor: crosshair;
-}
-
 .stage.tool-text {
   cursor: text;
 }
@@ -992,6 +988,17 @@ details.sub > summary {
   line-height: 1.8;
   white-space: nowrap;
   overflow: hidden;
+}
+
+svg.font-sample {
+  display: block;
+  width: 100%;
+  height: 34px;
+  fill: currentColor;
+}
+
+.font-sample.pending {
+  color: var(--muted);
 }
 
 .font-name {
@@ -1665,4 +1672,126 @@ kbd {
 .element-glyph {
   font-size: 24px;
   line-height: 1;
+}
+
+/* ----- Segment / letter editing ----- */
+.glyph-sel.segment {
+  fill: rgba(31, 58, 115, 0.08);
+  stroke: var(--lapis);
+  stroke-dasharray: 4 3;
+}
+.glyph-sel.letter {
+  fill: rgba(201, 162, 58, 0.22);
+  stroke: var(--gold);
+}
+.stretchable {
+  fill: rgba(31, 58, 115, 0.06);
+  stroke: rgba(31, 58, 115, 0.35);
+  stroke-width: 1;
+  stroke-dasharray: 2 3;
+  pointer-events: none;
+}
+.stretchable.active {
+  fill: rgba(201, 162, 58, 0.22);
+  stroke: var(--gold);
+  stroke-dasharray: none;
+}
+.stage.tool-stretch {
+  cursor: ew-resize;
+}
+
+/* Alternates of the selection: a strip on the page and a grid in the panel. */
+.variant-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(64px, 1fr));
+  gap: 6px;
+}
+.variant-list.compact {
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+  max-width: min(560px, 70vw);
+  padding-bottom: 2px;
+}
+.variant {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 52px;
+  min-width: 56px;
+  padding: 4px 6px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  color: var(--ink);
+  cursor: pointer;
+}
+.variant-list.compact .variant {
+  flex: 0 0 auto;
+  height: 44px;
+  min-width: 48px;
+}
+.variant svg,
+.inspector .variant svg {
+  width: auto;
+  height: 100%;
+  max-width: 100%;
+  fill: currentColor;
+}
+.variant:hover {
+  border-color: var(--lapis);
+  background: var(--lapis-soft);
+}
+.variant.current {
+  border-color: var(--gold);
+  box-shadow: inset 0 0 0 1px var(--gold);
+  background: var(--gold-soft);
+}
+.variant:focus-visible {
+  outline: 2px solid var(--lapis);
+  outline-offset: 1px;
+}
+.variant-pop {
+  position: absolute;
+  transform: translateX(-50%);
+  z-index: 5;
+  padding: 6px 8px 8px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  box-shadow: 0 6px 20px rgba(20, 38, 80, 0.16);
+}
+.variant-pop-title {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 4px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.variant-pop-title kbd {
+  font: inherit;
+  font-size: 11px;
+  padding: 0 4px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  background: var(--panel);
+}
+
+/* Centre lines of a pen line (prototype). */
+.pen-skeleton polyline {
+  fill: none;
+  stroke: #d0452f;
+  stroke-width: 0.25;
+  vector-effect: non-scaling-stroke;
+}
+.pen-skeleton circle {
+  fill: #fff;
+  stroke: #d0452f;
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.note.warn {
+  color: var(--vermilion);
 }

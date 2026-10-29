@@ -13,3 +13,11 @@ export function rememberTextStyle(patch: Partial<Pick<TextObject, 'fontId' | 'si
 
 /** Caret of the text field being edited, so palettes and the on-screen keyboard insert at the right spot. */
 export const textCaret = { objectId: '', start: -1, end: -1 };
+
+/** Line whose text box should take the focus once its panel is shown (a newly added line). */
+export const pendingTextFocus = { objectId: '' };
+
+export function requestTextFocus(objectId: string): void {
+  pendingTextFocus.objectId = objectId;
+  window.dispatchEvent(new CustomEvent('midad:focus-text'));
+}

@@ -9,14 +9,14 @@ function describe(o: DocObject): string {
   switch (o.type) {
     case 'text':
       return o.text.trim().slice(0, 28) || 'سطر فارغ';
+    case 'strokes':
+      return o.text.trim().slice(0, 28) || 'سطر فارغ';
     case 'mark':
       return (findElement(o.element)?.label ?? o.name) + (o.ownerId ? ' (مرتبط)' : '');
-    case 'image':
-      return 'صورة';
   }
 }
 
-const TYPE_LABEL: Record<DocObject['type'], string> = { text: 'سطر', mark: 'عنصر', image: 'صورة' };
+const TYPE_LABEL: Record<DocObject['type'], string> = { text: 'سطر', mark: 'عنصر', strokes: 'بالقلم' };
 
 function Layers() {
   const page = usePage();

@@ -3,7 +3,9 @@ import { createText, defaultGlyphOverride } from '../model/defaults';
 import { findElement, markFromElement, type ElementStyle } from '../model/elements';
 import type { DocObject, GlyphOverride, MarkObject, TextObject } from '../model/types';
 import { getLoadedFont } from '../engine/fonts';
-import { textGeometry } from '../engine/layout';
+import { MAX_STRETCH_EM, textGeometry, type PlacedGlyph, type TextGeometry } from '../engine/layout';
+import { segmentStretchKey } from '../engine/variants';
+import { rotateInGroup, scaleInGroup } from '../model/glyphGroup';
 import {
   apply,
   chain,
@@ -22,11 +24,13 @@ import {
 import { markFontIds } from '../engine/marks';
 import { ObjectView, PageContent } from '../render/PageView';
 import { localBox, worldBox } from '../render/bounds';
-import { usePage, useEditor, withAttached } from '../store/editor';
+import { usePage, useEditor, withAttached, type GlyphSelection } from '../store/editor';
 import { useFonts } from '../store/fonts';
 import { useCursor } from '../store/cursor';
-import { lastTextStyle } from './textDefaults';
+import { lastTextStyle, requestTextFocus } from './textDefaults';
 import { RULER, Rulers } from './Rulers';
+import { applyVariant, cycleVariant, segmentKeysOf, useVariants } from './variantActions';
+import { VariantList } from './VariantList';
 
 export const MM = 96 / 25.4;
 
@@ -40,8 +44,6 @@ interface ItemSnap {
   rotation: number;
   scaleX: number;
   scaleY: number;
-  w: number;
-  h: number;
   /** an element that follows its line rather than being selected itself */
   attached: boolean;
 }
@@ -53,7 +55,20 @@ type Drag =
   | { kind: 'rotate'; start: Point; center: Point; items: ItemSnap[]; single: boolean }
   | { kind: 'marquee'; start: Point; additive: boolean }
   | { kind: 'gmove'; objectId: string; keys: string[]; start: Point; inv: Matrix; base: Record<string, GlyphOverride> }
-  | { kind: 'grotate' | 'gscale'; objectId: string; keys: string[]; start: Point; center: Point; base: Record<string, GlyphOverride> };
+  | {
+      kind: 'grotate' | 'gscale';
+      objectId: string;
+      keys: string[];
+      start: Point;
+      /** group centre on the page and in the line's local coordinates */
+      center: Point;
+      local: Point;
+      centers: Record<string, Point>;
+      base: Record<string, GlyphOverride>;
+      /** the line is mirrored, so angles turn the other way locally */
+      flipped: boolean;
+    }
+  | { kind: 'stretch'; objectId: string; key: string; start: Point; inv: Matrix; base: GlyphOverride; size: number; anchor: Point | null; origin: Point };
 
 const snapItem = (o: DocObject, attached = false): ItemSnap => ({
   id: o.id,
@@ -63,8 +78,6 @@ const snapItem = (o: DocObject, attached = false): ItemSnap => ({
   rotation: o.rotation,
   scaleX: o.scaleX,
   scaleY: o.scaleY,
-  w: 'w' in o ? o.w : 0,
-  h: 'h' in o ? o.h : 0,
   attached,
 });
 
@@ -92,6 +105,7 @@ export function Stage() {
   const svgRef = useRef<SVGSVGElement>(null);
   const [size, setSize] = useState({ w: 0, h: 0 });
   const drag = useRef<Drag | null>(null);
+  const lastClick = useRef<{ objectId: string; key: string; time: number } | null>(null);
   const [marquee, setMarquee] = useState<Rect | null>(null);
   const [guides, setGuides] = useState<{ v: number[]; h: number[] }>({ v: [], h: [] });
   const [spaceDown, setSpaceDown] = useState(false);
@@ -217,10 +231,49 @@ export function Stage() {
   }, [ghost]);
 
   const glyphObject: TextObject | null = (() => {
-    if (tool !== 'glyph') return null;
+    if (tool !== 'glyph' && tool !== 'stretch') return null;
     const o = selectedObjects[0];
     return o && o.type === 'text' ? o : null;
   })();
+  const variants = useVariants(tool === 'glyph' ? glyphObject : null, glyphSel);
+
+  /** Glyph of a line under a page point: the smallest box wins, marks before letters. */
+  const glyphAt = (o: TextObject, q: Point): { geo: TextGeometry; g: PlacedGlyph } | null => {
+    const lf = getLoadedFont(o.fontId);
+    if (!lf) return null;
+    const geo = textGeometry(o, lf);
+    const l = apply(invert(chain(objectMatrix(o), geo.copies[0])), q.x, q.y);
+    let best: PlacedGlyph | null = null;
+    let bestArea = Infinity;
+    for (const g of geo.glyphs) {
+      const b = g.bbox;
+      if (g.hidden || l.x < b.minX || l.x > b.maxX || l.y < b.minY || l.y > b.maxY) continue;
+      const area = (b.maxX - b.minX) * (b.maxY - b.minY) * (g.mark ? 0.25 : 1);
+      if (area < bestArea) {
+        best = g;
+        bestArea = area;
+      }
+    }
+    return best ? { geo, g: best } : null;
+  };
+
+  useEffect(() => {
+    const cycle = (e: Event) => cycleVariant(Number((e as CustomEvent).detail) || 1);
+    const up = () => {
+      const st = useEditor.getState();
+      const sel = st.glyphSel;
+      const o = sel && st.doc.pages[st.pageIndex].objects.find((x) => x.id === sel.objectId);
+      const lf = o && o.type === 'text' ? getLoadedFont(o.fontId) : undefined;
+      if (!sel || !o || o.type !== 'text' || !lf) return;
+      st.setGlyphSel({ objectId: o.id, keys: segmentKeysOf(textGeometry(o, lf), sel.keys[0]), level: 'segment' });
+    };
+    window.addEventListener('midad:cycle-variant', cycle);
+    window.addEventListener('midad:segment-level', up);
+    return () => {
+      window.removeEventListener('midad:cycle-variant', cycle);
+      window.removeEventListener('midad:segment-level', up);
+    };
+  }, []);
 
   const selectionBox = (): Rect => selectedObjects.reduce((acc, o) => unionRect(acc, worldBox(o)), emptyRect());
 
@@ -247,9 +300,45 @@ export function Stage() {
 
     if (tool === 'text') {
       const t = createText({ ...lastTextStyle, x: p.x, y: p.y, text: 'اكتب نصّك هنا' });
+      // No mouse-down default: it would move the focus away from the new line's text box.
+      e.preventDefault();
       st.addObject(t);
       st.setTool('select');
-      window.dispatchEvent(new CustomEvent('midad:focus-text'));
+      requestTextFocus(t.id);
+      return;
+    }
+
+    if (tool === 'stretch') {
+      const sid = target.closest('[data-oid]')?.getAttribute('data-oid');
+      const so = sid ? objectsById.get(sid) : undefined;
+      if (!so || so.type !== 'text' || so.locked) {
+        st.select([]);
+        return;
+      }
+      const hit = glyphAt(so, p);
+      if (!hit) return;
+      const key = hit.g.stretchable && !hit.g.mark ? hit.g.key : segmentStretchKey(so, hit.geo, hit.g.seg);
+      if (!key) {
+        st.toast('لا يوجد في هذا المقطع حرف قابل للمدّ.', 'info');
+        return;
+      }
+      if (!selection.includes(so.id) || selection.length > 1) st.select([so.id]);
+      st.setGlyphSel({ objectId: so.id, keys: [key], level: 'letter' });
+      const W = linearOnly(chain(objectMatrix(so), hit.geo.copies[0]));
+      // A straight line keeps its right end in place, so the letter grows leftwards as in writing.
+      const anchored = so.path.mode === 'straight' && so.repeat.count <= 1 && so.mirror === 'none';
+      st.beginGesture();
+      drag.current = {
+        kind: 'stretch',
+        objectId: so.id,
+        key,
+        start: p,
+        inv: invert(W),
+        base: so.glyphs[key] ?? defaultGlyphOverride(),
+        size: so.size,
+        anchor: anchored ? apply(W, -1, 0) : null,
+        origin: { x: so.x, y: so.y },
+      };
       return;
     }
 
@@ -263,25 +352,42 @@ export function Stage() {
         const W = chain(objectMatrix(glyphObject), geo.copies[0]);
         const sel = geo.glyphs.filter((g) => glyphSel.keys.includes(g.key));
         const box = sel.reduce((acc, g) => unionRect(acc, g.bbox), emptyRect());
-        const c = apply(W, (box.minX + box.maxX) / 2, (box.minY + box.maxY) / 2);
+        const local = { x: (box.minX + box.maxX) / 2, y: (box.minY + box.maxY) / 2 };
         st.beginGesture();
         drag.current = {
           kind: ghandle === 'rot' ? 'grotate' : 'gscale',
           objectId: glyphObject.id,
           keys: glyphSel.keys,
           start: p,
-          center: c,
+          center: apply(W, local.x, local.y),
+          local,
+          centers: Object.fromEntries(sel.map((g) => [g.key, g.baseCenter])),
           base: Object.fromEntries(glyphSel.keys.map((key) => [key, glyphObject.glyphs[key] ?? defaultGlyphOverride()])),
+          flipped: W[0] * W[3] - W[1] * W[2] < 0,
         };
         return;
       }
-      const gkey = target.closest('[data-gkey]')?.getAttribute('data-gkey');
       const oid = target.closest('[data-oid]')?.getAttribute('data-oid');
-      if (gkey && oid === glyphObject.id) {
-        let keys = glyphSel?.objectId === glyphObject.id ? glyphSel.keys : [];
-        if (e.shiftKey) keys = keys.includes(gkey) ? keys.filter((x) => x !== gkey) : [...keys, gkey];
-        else if (!keys.includes(gkey)) keys = [gkey];
-        st.setGlyphSel({ objectId: glyphObject.id, keys });
+      // Between the strokes of a letter the hit area of the line is hit: use the letter's box.
+      const gkey =
+        target.closest('[data-gkey]')?.getAttribute('data-gkey') ?? (oid === glyphObject.id ? glyphAt(glyphObject, p)?.g.key : undefined);
+      if (gkey && oid === glyphObject.id && lf) {
+        const segKeys = segmentKeysOf(textGeometry(glyphObject, lf), gkey);
+        const now = performance.now();
+        const last = lastClick.current;
+        const isDouble = !!last && last.objectId === glyphObject.id && segKeys.includes(last.key) && now - last.time < 450;
+        lastClick.current = isDouble ? null : { objectId: glyphObject.id, key: gkey, time: now };
+        const cur = glyphSel?.objectId === glyphObject.id ? glyphSel : null;
+        const toggle = (list: string[], add: string[]) =>
+          add.every((k) => list.includes(k)) ? list.filter((k) => !add.includes(k)) : [...new Set([...list, ...add])];
+        let next: GlyphSelection;
+        if (isDouble || e.altKey) next = { objectId: glyphObject.id, keys: [gkey], level: 'letter' };
+        else if (e.shiftKey && cur) next = { ...cur, keys: toggle(cur.keys, cur.level === 'letter' ? [gkey] : segKeys) };
+        else if (cur && cur.keys.includes(gkey) && (cur.level === 'letter' || segKeys.every((k) => cur.keys.includes(k)))) next = cur;
+        else next = { objectId: glyphObject.id, keys: segKeys, level: 'segment' };
+        const keys = next.keys;
+        st.setGlyphSel(next);
+        if (!keys.length) return;
         st.beginGesture();
         drag.current = {
           kind: 'gmove',
@@ -433,13 +539,8 @@ export function Stage() {
               o.x = d.pivot.x + back.x;
               o.y = d.pivot.y + back.y;
             }
-            if (o.type === 'image') {
-              o.w = Math.max(0.5, it.w * fx);
-              o.h = Math.max(0.5, it.h * fy);
-            } else {
-              o.scaleX = it.scaleX * fx;
-              o.scaleY = it.scaleY * fy;
-            }
+            o.scaleX = it.scaleX * fx;
+            o.scaleY = it.scaleY * fy;
           }
         });
         break;
@@ -496,11 +597,28 @@ export function Stage() {
             const a1 = Math.atan2(p.y - d.center.y, p.x - d.center.x);
             let delta = ((a1 - a0) * 180) / Math.PI;
             if (e.shiftKey) delta = Math.round(delta / 15) * 15;
-            for (const key of d.keys) o.glyphs[key] = { ...d.base[key], rotate: d.base[key].rotate + delta };
+            const turn = d.flipped ? -delta : delta;
+            for (const key of d.keys) if (d.centers[key]) o.glyphs[key] = rotateInGroup(d.base[key], d.centers[key], d.local, turn);
           } else {
             const r0 = Math.hypot(d.start.x - d.center.x, d.start.y - d.center.y) || 1;
             const f = Math.max(0.05, Math.hypot(p.x - d.center.x, p.y - d.center.y) / r0);
-            for (const key of d.keys) o.glyphs[key] = { ...d.base[key], scale: clamp(d.base[key].scale * f, 0.05, 20) };
+            for (const key of d.keys) if (d.centers[key]) o.glyphs[key] = scaleInGroup(d.base[key], d.centers[key], d.local, f);
+          }
+        });
+        break;
+      }
+      case 'stretch': {
+        // Dragging towards the end of the line (leftwards) lengthens the letter.
+        const along = apply(d.inv, p.x - d.start.x, p.y - d.start.y).x;
+        const stretch = Math.round(clamp(d.base.stretch - along / d.size, 0, MAX_STRETCH_EM) * 1000) / 1000;
+        const grow = (stretch - d.base.stretch) * d.size;
+        st.gesture((doc) => {
+          const o = doc.pages[st.pageIndex].objects.find((x) => x.id === d.objectId);
+          if (!o || o.type !== 'text') return;
+          o.glyphs[d.key] = { ...d.base, stretch };
+          if (d.anchor) {
+            o.x = d.origin.x + (d.anchor.x * grow) / 2;
+            o.y = d.origin.y + (d.anchor.y * grow) / 2;
           }
         });
         break;
@@ -543,6 +661,8 @@ export function Stage() {
       const st = useEditor.getState();
       st.select([o.id]);
       st.setTool('glyph');
+      const hit = glyphAt(o, toPage(e.clientX, e.clientY));
+      if (hit) st.setGlyphSel({ objectId: o.id, keys: segmentKeysOf(hit.geo, hit.g.key), level: 'segment' });
     }
   };
 
@@ -559,6 +679,19 @@ export function Stage() {
       {...(ghandle ? { 'data-ghandle': h } : { 'data-handle': h })}
     />
   );
+  let variantAnchor: Point | null = null;
+  if (tool === 'stretch' && glyphObject) {
+    const lf = getLoadedFont(glyphObject.fontId);
+    if (lf) {
+      const geo = textGeometry(glyphObject, lf);
+      const W = chain(objectMatrix(glyphObject), geo.copies[0]);
+      for (const g of geo.glyphs) {
+        if (!g.stretchable || g.mark || g.hidden) continue;
+        const active = glyphSel?.objectId === glyphObject.id && glyphSel.keys.includes(g.key);
+        overlay.push(<polygon key={'st' + g.key} className={'stretchable' + (active ? ' active' : '')} points={poly(rectCorners(W, g.bbox).map(toScreen))} />);
+      }
+    }
+  }
   if (tool === 'glyph' && glyphObject) {
     const lf = getLoadedFont(glyphObject.fontId);
     overlay.push(<polygon key="gobj" className="sel-outline dashed" points={poly(rectCorners(objectMatrix(glyphObject), localBox(glyphObject)).map(toScreen))} />);
@@ -566,8 +699,17 @@ export function Stage() {
       const geo = textGeometry(glyphObject, lf);
       const W = chain(objectMatrix(glyphObject), geo.copies[0]);
       const sel = geo.glyphs.filter((g) => glyphSel.keys.includes(g.key));
-      for (const g of sel) overlay.push(<polygon key={'g' + g.key} className="glyph-sel" points={poly(rectCorners(W, g.bbox).map(toScreen))} />);
+      const groups = new Map<string, Rect>();
+      for (const g of sel) {
+        const id = glyphSel.level === 'segment' && g.seg >= 0 ? 's' + g.seg : 'g' + g.key;
+        groups.set(id, unionRect(groups.get(id) ?? emptyRect(), g.bbox));
+      }
+      for (const [id, r] of groups) overlay.push(<polygon key={id} className={'glyph-sel ' + glyphSel.level} points={poly(rectCorners(W, r).map(toScreen))} />);
       const box = sel.reduce((acc, g) => unionRect(acc, g.bbox), emptyRect());
+      if (!isEmptyRect(box)) {
+        const pts = rectCorners(W, box).map(toScreen);
+        variantAnchor = { x: pts.reduce((a, q) => a + q.x, 0) / 4, y: Math.max(...pts.map((q) => q.y)) };
+      }
       if (!isEmptyRect(box)) {
         const corners = rectCorners(W, box).map(toScreen);
         const top = { x: (corners[0].x + corners[1].x) / 2, y: (corners[0].y + corners[1].y) / 2 };
@@ -581,7 +723,7 @@ export function Stage() {
         overlay.push(handleEl('gscale', corners[2], 'scale', true));
       }
     }
-  } else if (selectedObjects.length === 1) {
+  } else if (tool !== 'stretch' && selectedObjects.length === 1) {
     const o = selectedObjects[0];
     const W = objectMatrix(o);
     const b = localBox(o);
@@ -607,7 +749,7 @@ export function Stage() {
       overlay.push(<line key="rl" className="rot-stem" x1={top.x} y1={top.y} x2={rot.x} y2={rot.y} />);
       overlay.push(<circle key="rot" className="rot-handle" cx={rot.x} cy={rot.y} r={5.5} data-handle="rot" />);
     }
-  } else if (selectedObjects.length > 1) {
+  } else if (tool !== 'stretch' && selectedObjects.length > 1) {
     const box = selectionBox();
     const c = [
       { x: box.minX, y: box.minY },
@@ -679,6 +821,16 @@ export function Stage() {
           />
         )}
       </svg>
+      {variantAnchor && variants.length > 1 && glyphObject && glyphSel && (
+        <div
+          className="variant-pop"
+          style={{ left: clamp(variantAnchor.x, 120, Math.max(120, size.w - 120)), top: Math.min(variantAnchor.y + 14, Math.max(0, size.h - 90)) }}
+          onPointerDown={(e) => e.stopPropagation()}
+        >
+          <div className="variant-pop-title">{glyphSel.level === 'segment' ? 'بدائل المقطع' : 'بدائل الحرف'} <kbd>[</kbd> <kbd>]</kbd></div>
+          <VariantList compact variants={variants} onPick={(v) => applyVariant(glyphObject, glyphSel, v)} />
+        </div>
+      )}
       {view.rulers && size.w > 0 && <Rulers width={size.w} height={size.h} k={k} panX={view.panX} panY={view.panY} cursor={cursor} />}
     </div>
   );

@@ -7,7 +7,7 @@ export interface FontDef {
   name: string;
   /** calligraphic style family shown in the UI */
   category: string;
-  /** path inside node_modules (built-in fonts) */
+  /** package path, or project path starting with "./" (built-in fonts; used by the tests) */
   file?: string;
   /** OpenType language system used when shaping */
   lang: string;
@@ -26,6 +26,8 @@ export interface LoadedFont {
   descender: number;
   /** optional GSUB features offered to the user (stylistic sets, swashes, ...) */
   optionalFeatures: string[];
+  /** the font file itself, kept for reading GSUB alternates */
+  data: Uint8Array;
   /** CSS family name registered for UI previews (browser only) */
   cssFamily: string;
 }
@@ -40,6 +42,10 @@ export const BUILTIN_FONTS: FontDef[] = [
   { id: 'scheherazade-bold', name: 'شهرزاد عريض', category: 'نسخ', file: G + 'scheherazade-new/700Bold/ScheherazadeNew_700Bold.ttf', lang: 'ar', kashida: true, builtin: true },
   { id: 'lateef', name: 'لطيف', category: 'نسخ', file: G + 'lateef/400Regular/Lateef_400Regular.ttf', lang: 'ar', kashida: true, builtin: true },
   { id: 'mirza', name: 'ميرزا', category: 'نسخ فارسي', file: G + 'mirza/400Regular/Mirza_400Regular.ttf', lang: 'ar', kashida: true, builtin: true },
+  { id: 'layla-thuluth', name: 'ليلى ثلث', category: 'ثلث', file: './src/assets/fonts/layla/LaylaThuluth.ttf', lang: 'ar', kashida: true, builtin: true },
+  { id: 'ruwudu', name: 'رُدود', category: 'ديواني', file: G + 'ruwudu/400Regular/Ruwudu_400Regular.ttf', lang: 'ar', kashida: false, builtin: true },
+  { id: 'ruwudu-bold', name: 'رُدود عريض', category: 'ديواني', file: G + 'ruwudu/700Bold/Ruwudu_700Bold.ttf', lang: 'ar', kashida: false, builtin: true },
+  { id: 'layla-diwani', name: 'ليلى ديواني', category: 'ديواني', file: './src/assets/fonts/layla/LaylaDiwani.ttf', lang: 'ar', kashida: false, builtin: true },
   { id: 'aref-ruqaa', name: 'عارف رقعة', category: 'رقعة', file: G + 'aref-ruqaa/400Regular/ArefRuqaa_400Regular.ttf', lang: 'ar', kashida: false, builtin: true },
   { id: 'aref-ruqaa-bold', name: 'عارف رقعة عريض', category: 'رقعة', file: G + 'aref-ruqaa/700Bold/ArefRuqaa_700Bold.ttf', lang: 'ar', kashida: false, builtin: true },
   { id: 'reem-kufi', name: 'ريم كوفي', category: 'كوفي', file: G + 'reem-kufi/400Regular/ReemKufi_400Regular.ttf', lang: 'ar', kashida: true, builtin: true },
@@ -135,6 +141,7 @@ export async function loadFontFromBuffer(def: FontDef, data: ArrayBuffer): Promi
     ascender: ext.ascender,
     descender: ext.descender,
     optionalFeatures,
+    data: bytes,
     cssFamily,
   };
   if (typeof document !== 'undefined' && typeof FontFace !== 'undefined') {

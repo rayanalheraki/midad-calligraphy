@@ -22,6 +22,10 @@ import lalezar from '@expo-google-fonts/lalezar/400Regular/Lalezar_400Regular.tt
 import jomhuria from '@expo-google-fonts/jomhuria/400Regular/Jomhuria_400Regular.ttf?url';
 import marhey from '@expo-google-fonts/marhey/400Regular/Marhey_400Regular.ttf?url';
 import elMessiri from '@expo-google-fonts/el-messiri/400Regular/ElMessiri_400Regular.ttf?url';
+import ruwudu from '@expo-google-fonts/ruwudu/400Regular/Ruwudu_400Regular.ttf?url';
+import ruwuduBold from '@expo-google-fonts/ruwudu/700Bold/Ruwudu_700Bold.ttf?url';
+import laylaThuluth from '../assets/fonts/layla/LaylaThuluth.ttf?url';
+import laylaDiwani from '../assets/fonts/layla/LaylaDiwani.ttf?url';
 import { findFontDef, getLoadedFont, loadFontFromBuffer, type LoadedFont } from './fonts';
 import { loadUserFontData } from '../io/storage';
 
@@ -33,6 +37,10 @@ const URLS: Record<string, string> = {
   'scheherazade-bold': scheherazadeBold,
   lateef,
   mirza,
+  'layla-thuluth': laylaThuluth,
+  ruwudu,
+  'ruwudu-bold': ruwuduBold,
+  'layla-diwani': laylaDiwani,
   'aref-ruqaa': arefRuqaa,
   'aref-ruqaa-bold': arefRuqaaBold,
   'reem-kufi': reemKufi,

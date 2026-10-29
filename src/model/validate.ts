@@ -1,18 +1,17 @@
 // Validation and sanitisation of documents loaded from files or storage.
-// Only known fields are copied, numbers are clamped, colours must be #rrggbb and
-// embedded images must be base64 data URLs of raster formats. Anything else is dropped.
+// Only known fields are copied, numbers are clamped and colours must be #rrggbb.
+// Anything else (including images and page backgrounds of older files) is dropped.
 import { clamp } from '../engine/geom';
 import { findFontDef, DEFAULT_FONT_ID } from '../engine/fonts';
-import { createPage, createText, defaultBackground, defaultGlyphOverride, uid } from './defaults';
+import { MAX_STRETCH_EM } from '../engine/layout';
+import { createPage, createStrokes, createText, defaultGlyphOverride, uid } from './defaults';
 import { findElement } from './elements';
 import type {
-  Background,
   DocObject,
   Fill,
   GlyphOverride,
   MidadDoc,
   Page,
-  PatternKind,
   Shadow,
   MarkShape,
   StrokeStyle,
@@ -23,7 +22,6 @@ export const LIMITS = {
   maxPages: 200,
   maxObjectsPerPage: 2000,
   maxTextChars: 5000,
-  maxImageChars: 15 * 1024 * 1024,
   maxGlyphOverrides: 5000,
 };
 
@@ -38,11 +36,6 @@ export const color = (v: unknown, d: string): string =>
 const str = (v: unknown, d: string, max: number): string => (typeof v === 'string' ? v.slice(0, max) : d);
 const oneOf = <T extends string>(v: unknown, allowed: readonly T[], d: T): T =>
   typeof v === 'string' && (allowed as readonly string[]).includes(v) ? (v as T) : d;
-
-const IMAGE_RE = /^data:image\/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/]+=*$/;
-export function safeImageSrc(v: unknown): string | null {
-  return typeof v === 'string' && v.length <= LIMITS.maxImageChars && IMAGE_RE.test(v) ? v : null;
-}
 
 function fill(v: unknown, d: Fill): Fill {
   if (!isObj(v)) return d;
@@ -99,13 +92,26 @@ function glyphOverrides(v: unknown): Record<string, GlyphOverride> {
       scale: num(g.scale, d.scale, 0.05, 20),
       color: g.color == null ? null : color(g.color, '#1b1e27'),
       hidden: bool(g.hidden, false),
+      alt: typeof g.alt === 'string' && /^[\x21-\x7e]{1,63}$/.test(g.alt) ? g.alt : null,
+      stretch: num(g.stretch, 0, 0, MAX_STRETCH_EM),
     };
   }
   return out;
 }
 
 const MARK_SHAPES: readonly MarkShape[] = ['glyph', 'dot1', 'dot2h', 'dot2v', 'dot3', 'dot3i'];
-const PATTERNS: readonly PatternKind[] = ['none', 'dots', 'grid', 'diagonal', 'stars8', 'hexagons', 'circles', 'lattice'];
+const VARIANT_RE = /^-?[a-z0-9]{4}(?:=\d{1,3})?$/;
+
+function segVariants(v: unknown): Record<string, string[]> {
+  const out: Record<string, string[]> = {};
+  if (!isObj(v)) return out;
+  for (const [k, specs] of Object.entries(v).slice(0, LIMITS.maxGlyphOverrides)) {
+    if (!/^\d+$/.test(k) || !Array.isArray(specs)) continue;
+    const ok = specs.filter((f): f is string => typeof f === 'string' && VARIANT_RE.test(f)).slice(0, 8);
+    if (ok.length) out[k] = ok;
+  }
+  return out;
+}
 
 function textObject(v: Obj, warnings: string[]): TextObject {
   const d = createText();
@@ -133,6 +139,7 @@ function textObject(v: Obj, warnings: string[]): TextObject {
     kashidaAt,
     justifyWidth: num(v.justifyWidth, 0, 0, 10000),
     features: Array.isArray(v.features) ? v.features.filter((f): f is string => typeof f === 'string' && /^[a-z0-9]{4}$/.test(f)).slice(0, 30) : [],
+    segVariants: segVariants(v.segVariants),
     path: {
       mode: oneOf(path.mode, ['straight', 'arc', 'circle', 'wave'] as const, 'straight'),
       radius: num(path.radius, 80, 5, 5000),
@@ -182,43 +189,39 @@ function object(v: unknown, warnings: string[]): DocObject | null {
         ownerId: typeof v.ownerId === 'string' ? v.ownerId.slice(0, 40) : null,
       };
     }
-    case 'image': {
-      const src = safeImageSrc(v.src);
-      if (!src) {
-        warnings.push('أُهملت صورة لأن مصدرها ليس صورة مضمّنة آمنة.');
-        return null;
-      }
-      return { ...base(v), id: uid('i'), type: 'image', src, w: num(v.w, 50, 0.5, 10000), h: num(v.h, 50, 0.5, 10000) };
+    case 'strokes': {
+      const d = createStrokes();
+      const nums = (r: unknown, max: number) => {
+        const out: Record<string, number> = {};
+        if (isObj(r)) for (const [k, n] of Object.entries(r).slice(0, 2000)) if (/^\d+$/.test(k)) out[k] = num(n, 0, 0, max);
+        return out;
+      };
+      return {
+        ...d,
+        ...base(v),
+        id: uid('s'),
+        type: 'strokes',
+        text: str(v.text, '', 500),
+        size: num(v.size, d.size, 1, 2000),
+        nibWidth: num(v.nibWidth, d.nibWidth, 0.02, 0.4),
+        nibAngle: num(v.nibAngle, d.nibAngle, -180, 180),
+        madd: nums(v.madd, 1),
+        kashida: nums(v.kashida, 4),
+        fill: fill(v.fill, d.fill),
+        showSkeleton: bool(v.showSkeleton, false),
+      };
     }
+    case 'image':
+      warnings.push('أُهملت الصور: يقتصر المحرر على الخط وعناصره.');
+      return null;
     default:
       return null;
   }
 }
 
-function background(v: unknown): Background {
-  const d = defaultBackground();
-  if (!isObj(v)) return d;
-  const pat = isObj(v.pattern) ? v.pattern : {};
-  const grad = isObj(v.gradient) ? v.gradient : null;
-  const img = isObj(v.image) ? v.image : null;
-  const imgSrc = img ? safeImageSrc(img.src) : null;
-  return {
-    color: color(v.color, d.color),
-    gradient: grad ? { from: color(grad.from, '#ffffff'), to: color(grad.to, '#e9edf5'), angle: num(grad.angle, 90, -360, 360) } : null,
-    pattern: {
-      kind: oneOf(pat.kind, PATTERNS, 'none'),
-      color: color(pat.color, d.pattern.color),
-      size: num(pat.size, d.pattern.size, 3, 300),
-      opacity: num(pat.opacity, d.pattern.opacity, 0, 1),
-    },
-    image: img && imgSrc ? { src: imgSrc, fit: oneOf(img.fit, ['cover', 'contain', 'stretch'] as const, 'cover'), opacity: num(img.opacity, 1, 0, 1) } : null,
-  };
-}
-
 function page(v: unknown, warnings: string[]): Page | null {
   if (!isObj(v)) return null;
   const p = createPage(num(v.width, 210, 10, 5000), num(v.height, 297, 10, 5000), str(v.name, 'صفحة', 80));
-  p.background = background(v.background);
   if (Array.isArray(v.objects)) {
     // Ids are regenerated, so element-to-line links are mapped from the file's ids.
     const remap = new Map<string, string>();

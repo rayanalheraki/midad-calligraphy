@@ -42,6 +42,10 @@ export interface GlyphOverride {
   scale: number;
   color: string | null;
   hidden: boolean;
+  /** alternate form chosen from the font, by glyph name (null: the shaped form) */
+  alt: string | null;
+  /** lengthening (مدّ) of the letter, in ems */
+  stretch: number;
 }
 
 export type TextPathMode = 'straight' | 'arc' | 'circle' | 'wave';
@@ -85,6 +89,11 @@ export interface TextObject extends BaseObject {
   justifyWidth: number;
   /** enabled OpenType stylistic features, e.g. ["ss01"] */
   features: string[];
+  /**
+   * Alternate shaping chosen for a connected segment (key: UTF-16 index of its first letter),
+   * as feature settings such as ["ss01"], ["-liga"] or ["salt=2"].
+   */
+  segVariants: Record<string, string[]>;
   path: TextPath;
   repeat: Repeat;
   mirror: MirrorMode;
@@ -119,32 +128,36 @@ export interface MarkObject extends BaseObject {
   ownerId: string | null;
 }
 
-export interface ImageObject extends BaseObject {
-  type: 'image';
-  /** data:image/png|jpeg|webp;base64,... only */
-  src: string;
-  w: number;
-  h: number;
+/**
+ * A line drawn letter by letter with a broad-nib pen (prototype): letters are centre-line
+ * strokes swept by a nib, so they can be lengthened and joined by connector strokes.
+ */
+export interface StrokesObject extends BaseObject {
+  type: 'strokes';
+  text: string;
+  /** em size in mm */
+  size: number;
+  /** nib width as a fraction of the em */
+  nibWidth: number;
+  /** nib angle from the baseline, degrees */
+  nibAngle: number;
+  /** lengthening of a letter (key: UTF-16 index), 0..1 of its range */
+  madd: Record<string, number>;
+  /** connector length after a letter (key: UTF-16 index), in ems */
+  kashida: Record<string, number>;
+  fill: Fill;
+  /** show the centre lines while editing */
+  showSkeleton: boolean;
 }
 
-export type DocObject = TextObject | MarkObject | ImageObject;
+export type DocObject = TextObject | MarkObject | StrokesObject;
 export type ObjectType = DocObject['type'];
-
-export type PatternKind = 'none' | 'dots' | 'grid' | 'diagonal' | 'stars8' | 'hexagons' | 'circles' | 'lattice';
-
-export interface Background {
-  color: string;
-  gradient: { from: string; to: string; angle: number } | null;
-  pattern: { kind: PatternKind; color: string; size: number; opacity: number };
-  image: { src: string; fit: 'cover' | 'contain' | 'stretch'; opacity: number } | null;
-}
 
 export interface Page {
   id: string;
   name: string;
   width: number;
   height: number;
-  background: Background;
   objects: DocObject[];
 }
 

@@ -1,10 +1,9 @@
 import type {
-  Background,
   GlyphOverride,
-  ImageObject,
   MidadDoc,
   Page,
   MarkObject,
+  StrokesObject,
   TextObject,
 } from './types';
 
@@ -24,17 +23,8 @@ export const PAGE_SIZES: { id: string; name: string; w: number; h: number }[] = 
   { id: 'banner', name: 'لافتة ٤٢٠×١٤٨', w: 420, h: 148 },
 ];
 
-export function defaultBackground(): Background {
-  return {
-    color: '#ffffff',
-    gradient: null,
-    pattern: { kind: 'none', color: '#1f3a73', size: 18, opacity: 0.12 },
-    image: null,
-  };
-}
-
 export function createPage(w = 210, h = 297, name = 'صفحة'): Page {
-  return { id: uid('p'), name, width: w, height: h, background: defaultBackground(), objects: [] };
+  return { id: uid('p'), name, width: w, height: h, objects: [] };
 }
 
 export function createDoc(title = 'عمل جديد'): MidadDoc {
@@ -43,7 +33,7 @@ export function createDoc(title = 'عمل جديد'): MidadDoc {
 }
 
 export function defaultGlyphOverride(): GlyphOverride {
-  return { dx: 0, dy: 0, rotate: 0, scale: 1, color: null, hidden: false };
+  return { dx: 0, dy: 0, rotate: 0, scale: 1, color: null, hidden: false, alt: null, stretch: 0 };
 }
 
 export function createText(partial: Partial<TextObject> = {}): TextObject {
@@ -67,6 +57,7 @@ export function createText(partial: Partial<TextObject> = {}): TextObject {
     kashidaAt: {},
     justifyWidth: 0,
     features: [],
+    segVariants: {},
     path: { mode: 'straight', radius: 80, sweep: 300, amplitude: 6, wavelength: 60, flip: false },
     repeat: { count: 1, angle: 45, offset: 0 },
     mirror: 'none',
@@ -81,22 +72,27 @@ export function createText(partial: Partial<TextObject> = {}): TextObject {
   };
 }
 
-export function createImage(src: string, w: number, h: number, partial: Partial<ImageObject> = {}): ImageObject {
+export function createStrokes(partial: Partial<StrokesObject> = {}): StrokesObject {
   return {
-    id: uid('i'),
-    type: 'image',
-    name: 'صورة',
+    id: uid('s'),
+    type: 'strokes',
+    name: 'سطر بالقلم',
     x: 105,
-    y: 148,
+    y: 120,
     rotation: 0,
     scaleX: 1,
     scaleY: 1,
     opacity: 1,
     locked: false,
     hidden: false,
-    src,
-    w,
-    h,
+    text: 'نبيل',
+    size: 30,
+    nibWidth: 0.1,
+    nibAngle: 65,
+    madd: {},
+    kashida: {},
+    fill: { kind: 'solid', color: '#1b1e27' },
+    showSkeleton: false,
     ...partial,
   };
 }

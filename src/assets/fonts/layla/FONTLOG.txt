@@ -1,0 +1,51 @@
+FONTLOG for the LaylaFontFamily fonts
+
+This file provides detailed information on the LaylaFontFamily Font Software. This information should be distributed along with the LaylaFontFamily fonts and any derivative works.
+
+Basic Font Information
+
+LaylaFontFamily is a Unicode typeface family that supports Arabic language, and could be expanded to support other scripts in the future.
+
+This release contains the following fonts:
+- LaylaBasicArabic  : Naskh font
+- LaylaBoxer        : Designed font
+- LaylaThuluth      : Thuluth font
+- LaylaKoufi        : Koufi font
+- LaylaRuqaa        : Ruqaa font
+- LaylaDiwani       : Diwani font
+- LaylaArcyArc      : Designed font
+- LaylaDigital      : Designed font
+
+Documentation can be found at [http://sites.google.com/site/mohammedisam2000/layla-fonts]
+To contribute to the project, contact the author at [mohammed_isam1984@yahoo.com]
+
+ChangeLog
+
+16 May 2017 (Mohammed Isam) LaylaFontFamily Version 2.0-1
+- Fixed fonts. They work on MacOS now
+- Changed Latin letters and numbers
+
+08 December 2016 (Mohammed Isam) LaylaFontFamily Version 1.7-1
+- Fixed the font lookup tables
+
+05 November 2015 (Mohammed Isam) LaylaFontFamily Version 1.6.2
+- Added Digital font
+
+03 November 2015 (Mohammed Isam) LaylaFontFamily Version 1.6.1
+- Updated Latin glyphs in all fonts
+
+02 November 2015 (Mohammed Isam) LaylaFontFamily Version 1.5.3
+- Fixed ligation issue in Windows by adding missing tables
+
+12 October 2015 (Mohammed Isam) LaylaFontFamily Version 1.5.2
+- Added ArcyArc font
+- Added Diwani font
+- Increased glyph size
+- Fixed gap problem with large font sizes
+
+07 October 2015 (Mohammed Isam) LaylaFontFamily Version 1.5
+- Added numbers and symbol glyphs to the BasicArabic font file
+- Fixed FontForge errors in the font files
+
+09 February 2015 (Mohammed Isam) LaylaFontFamily Version 1.4
+- Initial Release

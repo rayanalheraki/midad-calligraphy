@@ -1,5 +1,5 @@
 import type { TextObject } from '../model/types';
-import { insertKashida, justifyCounts, kashidaCounts } from './arabic';
+import { insertKashida, justifyCounts, kashidaCounts, segmentOf } from './arabic';
 import type { LoadedFont } from './fonts';
 import {
   IDENTITY,
@@ -19,6 +19,11 @@ import {
   type Rect,
 } from './geom';
 import { glyphOutline, measureText, shapeText } from './shape';
+import { glyphByName } from './gsub';
+import { stretchCut, stretchOutline } from './stretch';
+
+/** Longest lengthening of one letter, in ems. */
+export const MAX_STRETCH_EM = 8;
 
 export interface PlacedGlyph {
   /** stable key used for per-glyph overrides: "<origin index>[k].<n>" */
@@ -27,10 +32,21 @@ export interface PlacedGlyph {
   d: string;
   bbox: Rect;
   center: Point;
+  /** centre before the glyph's own move/rotate/scale edits */
+  baseCenter: Point;
   mark: boolean;
   kashida: boolean;
   /** UTF-16 index of the source character in the object's text */
   origin: number;
+  /** connected segment (UTF-16 index of its first letter), -1 for spaces */
+  seg: number;
+  /** glyph produced by shaping, and the glyph drawn (differs when an alternate is chosen) */
+  gid: number;
+  drawnGid: number;
+  /** the letter has a flat stroke that can be lengthened */
+  stretchable: boolean;
+  /** joined to the next letter (on its left) */
+  joinsLeft: boolean;
   color: string | null;
   hidden: boolean;
 }
@@ -76,6 +92,8 @@ function curvePoint(obj: TextObject, xc: number, totalWidth: number): { p: Point
   return { p: { x: xc, y: 0 }, angle: 0 };
 }
 
+const VARIANT_RE = /^-?[a-z0-9]{4}(?:=\d{1,3})?$/;
+
 export function computeTextGeometry(obj: TextObject, lf: LoadedFont): TextGeometry {
   const features = obj.features.filter((f) => lf.optionalFeatures.includes(f));
   const useKashida = lf.def.kashida;
@@ -84,75 +102,170 @@ export function computeTextGeometry(obj: TextObject, lf: LoadedFont): TextGeomet
     counts = justifyCounts(obj.text, counts, obj.justifyWidth, (t) => measureText(lf, t, features, obj.size, obj.wordSpacing));
   }
   const kt = insertKashida(obj.text, counts);
-  const run = shapeText(lf, kt.text, features);
+  const segOf = segmentOf(obj.text);
+
+  // A segment's chosen variant becomes feature settings limited to its range of the text.
+  const ranged: string[] = [];
+  const variants = Object.entries(obj.segVariants ?? {});
+  if (variants.length) {
+    const ranges = new Map<number, [number, number]>();
+    for (let i = 0; i < kt.text.length; i++) {
+      const sg = segOf[kt.origin[i]] ?? -1;
+      if (sg < 0) continue;
+      const r = ranges.get(sg);
+      if (r) r[1] = i + 1;
+      else ranges.set(sg, [i, i + 1]);
+    }
+    for (const [key, specs] of variants) {
+      const r = ranges.get(Number(key));
+      if (r) for (const spec of specs) if (VARIANT_RE.test(spec)) ranged.push(`${spec}@${r[0]}:${r[1]}`);
+    }
+  }
+  const run = shapeText(lf, kt.text, [...features, ...ranged]);
   const s = obj.size / lf.upem;
   const spaceExtra = obj.wordSpacing / s;
+  const n = run.glyphs.length;
 
-  // Pen positions in font units (visual order, left to right).
-  const pens: number[] = [];
-  const advances: number[] = [];
-  let pen = 0;
-  for (const g of run.glyphs) {
-    pens.push(pen);
-    const ch = kt.text[g.cluster];
-    const extra = ch === ' ' || ch === ' ' ? spaceExtra : 0;
-    advances.push(g.ax + extra);
-    pen += g.ax + extra;
-  }
-  const totalUnits = pen;
-  const totalMm = totalUnits * s;
-
+  // Stable keys, segments and the letters each mark sits on.
+  const keys: string[] = [];
+  const origins: number[] = [];
+  const segs: number[] = [];
+  const kashida: boolean[] = [];
   const occurrences = new Map<string, number>();
-  const glyphs: PlacedGlyph[] = [];
-  let baseBox = emptyRect();
-
-  for (let i = 0; i < run.glyphs.length; i++) {
-    const g = run.glyphs[i];
+  for (const g of run.glyphs) {
     const origin = kt.origin[g.cluster] ?? 0;
     const isKashida = kt.inserted[g.cluster] ?? false;
     const keyBase = `${origin}${isKashida ? 'k' : ''}`;
-    const n = occurrences.get(keyBase) ?? 0;
-    occurrences.set(keyBase, n + 1);
-    const key = `${keyBase}.${n}`;
-
-    const outline = glyphOutline(lf, g.gid);
-    if (!outline.box) continue;
-    if (g.mark && obj.hideMarks) continue;
-
-    // Zero-advance glyphs (marks) share the cell of the next glyph with an advance.
-    let cell = advances[i];
-    if (cell === 0) {
-      for (let j = i + 1; j < run.glyphs.length; j++) {
-        if (advances[j] > 0) {
-          cell = advances[j];
+    const k = occurrences.get(keyBase) ?? 0;
+    occurrences.set(keyBase, k + 1);
+    keys.push(`${keyBase}.${k}`);
+    origins.push(origin);
+    segs.push(segOf[origin] ?? -1);
+    kashida.push(isKashida);
+  }
+  // Zero-advance glyphs (marks) belong to the next glyph with an advance.
+  const baseOf: number[] = [];
+  for (let i = 0; i < n; i++) {
+    let b = i;
+    if (run.glyphs[i].ax === 0) {
+      for (let j = i + 1; j < n; j++) {
+        if (run.glyphs[j].ax > 0) {
+          b = j;
           break;
         }
       }
     }
-    const xcMm = (pens[i] + cell / 2 - totalUnits / 2) * s;
-    const originX = (pens[i] + g.dx - totalUnits / 2) * s;
+    baseOf.push(b);
+  }
+
+  // Alternate forms and lengthening change the drawn glyph and its advance.
+  const gids: number[] = [];
+  const advOrig: number[] = [];
+  const adv: number[] = [];
+  const cuts: (number | null)[] = [];
+  const deltas: number[] = [];
+  const joinsLeft: boolean[] = [];
+  for (let i = 0; i < n; i++) {
+    const g = run.glyphs[i];
+    const ch = kt.text[g.cluster];
+    const extra = ch === ' ' || ch === ' ' ? spaceExtra : 0;
+    const ov = obj.glyphs[keys[i]];
+    let gid = g.gid;
+    let ax = g.ax;
+    if (ov?.alt) {
+      const alt = glyphByName(lf, ov.alt);
+      if (alt !== undefined && alt !== gid && glyphOutline(lf, alt).box) {
+        if (ax !== 0) ax += lf.font.glyphHAdvance(alt) - lf.font.glyphHAdvance(gid);
+        gid = alt;
+      }
+    }
+    let left = false;
+    for (let j = i - 1; j >= 0 && segs[i] >= 0 && segs[j] === segs[i]; j--) {
+      if (!run.glyphs[j].mark) {
+        left = true;
+        break;
+      }
+    }
+    const cut = g.mark ? null : stretchCut(lf, gid, left || kashida[i]);
+    const delta = cut !== null && ov?.stretch ? Math.min(MAX_STRETCH_EM, Math.max(0, ov.stretch)) * lf.upem : 0;
+    gids.push(gid);
+    advOrig.push(g.ax + extra);
+    adv.push(ax + extra + delta);
+    cuts.push(cut);
+    deltas.push(delta);
+    joinsLeft.push(left);
+  }
+
+  // Pen positions in font units (visual order, left to right).
+  const pens: number[] = [];
+  const pensOrig: number[] = [];
+  let pen = 0;
+  let penOrig = 0;
+  for (let i = 0; i < n; i++) {
+    pens.push(pen);
+    pensOrig.push(penOrig);
+    pen += adv[i];
+    penOrig += advOrig[i];
+  }
+  const totalUnits = pen;
+  const totalMm = totalUnits * s;
+
+  const glyphs: PlacedGlyph[] = [];
+  let baseBox = emptyRect();
+
+  for (let i = 0; i < n; i++) {
+    const g = run.glyphs[i];
+    const key = keys[i];
+    const outline = glyphOutline(lf, gids[i]);
+    if (!outline.box) continue;
+    if (g.mark && obj.hideMarks) continue;
+
+    let cmds = outline.cmds;
+    let box = outline.box;
+    const cut = cuts[i];
+    if (deltas[i] && cut !== null) {
+      cmds = stretchOutline(cmds, cut, deltas[i], lf.upem);
+      box = { ...box, minX: box.minX + (box.minX >= cut ? deltas[i] : 0), maxX: box.maxX + (box.maxX > cut ? deltas[i] : 0) };
+    }
+
+    // A mark keeps its place on its letter when that letter is lengthened or replaced.
+    let x = pens[i] + g.dx;
+    const b = baseOf[i];
+    if (g.mark && b !== i && (deltas[b] || gids[b] !== run.glyphs[b].gid)) {
+      const rel = pensOrig[i] + g.dx - pensOrig[b];
+      const bc = cuts[b];
+      x = pens[b] + rel + (deltas[b] && bc !== null && rel > bc ? deltas[b] : 0);
+    }
+    const xcMm = (pens[b] + adv[b] / 2 - totalUnits / 2) * s;
+    const originX = (x - totalUnits / 2) * s;
     const originY = -g.dy * s;
     const { p, angle } = curvePoint(obj, xcMm, totalMm);
     let m: Matrix = chain(translate(p.x, p.y), rotate(angle), translate(originX - xcMm, originY), scale(s, -s));
 
+    const raw = transformRect(m, box);
+    const baseCenter = { x: (raw.minX + raw.maxX) / 2, y: (raw.minY + raw.maxY) / 2 };
     const ov = obj.glyphs[key];
     if (ov && (ov.dx || ov.dy || ov.rotate || ov.scale !== 1)) {
-      const b = transformRect(m, outline.box);
-      const cx = (b.minX + b.maxX) / 2;
-      const cy = (b.minY + b.maxY) / 2;
+      const { x: cx, y: cy } = baseCenter;
       m = chain(translate(ov.dx, ov.dy), translate(cx, cy), rotate(ov.rotate), scale(ov.scale || 1), translate(-cx, -cy), m);
     }
-    const bbox = transformRect(m, outline.box);
-    const center = apply(m, (outline.box.minX + outline.box.maxX) / 2, (outline.box.minY + outline.box.maxY) / 2);
+    const bbox = transformRect(m, box);
+    const center = apply(m, (box.minX + box.maxX) / 2, (box.minY + box.maxY) / 2);
     const hidden = !!ov?.hidden;
     glyphs.push({
       key,
-      d: transformPath(outline.cmds, m),
+      d: transformPath(cmds, m),
       bbox,
       center,
+      baseCenter,
       mark: g.mark,
-      kashida: isKashida,
-      origin,
+      kashida: kashida[i],
+      origin: origins[i],
+      seg: segs[i],
+      gid: g.gid,
+      drawnGid: gids[i],
+      stretchable: cut !== null,
+      joinsLeft: joinsLeft[i],
       color: ov?.color ?? (g.mark && obj.markColor ? obj.markColor : null),
       hidden,
     });

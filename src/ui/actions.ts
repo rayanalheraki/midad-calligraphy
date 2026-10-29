@@ -1,4 +1,4 @@
-import { createDoc, createImage, createText, uid } from '../model/defaults';
+import { createDoc, createStrokes, createText, uid } from '../model/defaults';
 import { TEMPLATES } from '../model/templates';
 import { useEditor } from '../store/editor';
 import { downloadProject, readProjectFile, serializeDoc } from '../io/project';
@@ -6,8 +6,8 @@ import { importKlx } from '../io/klxImport';
 import { KlxError } from '../io/klx';
 import { ensurePageFonts, pageSvgString, printPages, rasterize } from '../io/export';
 import { idbPut, type SavedWork } from '../io/storage';
-import { pickFile, readImageFile } from '../io/images';
-import { lastTextStyle } from './textDefaults';
+import { pickFile } from '../io/files';
+import { lastTextStyle, requestTextFocus } from './textDefaults';
 
 const st = () => useEditor.getState();
 const errorText = (e: unknown) => (e instanceof Error ? e.message : 'حدث خطأ غير متوقع.');
@@ -78,28 +78,16 @@ export async function saveToWorks() {
 export function insertTextLine() {
   const s = st();
   const page = s.doc.pages[s.pageIndex];
-  s.addObject(createText({ ...lastTextStyle, x: page.width / 2, y: page.height / 2, text: 'اكتب نصّك هنا' }));
-  window.dispatchEvent(new CustomEvent('midad:focus-text'));
+  const t = createText({ ...lastTextStyle, x: page.width / 2, y: page.height / 2, text: 'اكتب نصّك هنا' });
+  s.addObject(t);
+  requestTextFocus(t.id);
 }
 
-/** Inserts an image file as a new object, sized to fit the page. */
-async function insertImageFromFile(file: File) {
+/** Adds a line drawn with nib strokes (prototype). */
+export function insertStrokesLine() {
   const s = st();
   const page = s.doc.pages[s.pageIndex];
-  const img = await readImageFile(file);
-  const w = Math.min((img.widthPx * 25.4) / 96, page.width * 0.7);
-  const h = (w * img.heightPx) / img.widthPx;
-  s.addObject(createImage(img.src, w, h, { x: page.width / 2, y: page.height / 2 }));
-}
-
-export async function insertImage(file?: File | null) {
-  const f = file ?? (await pickFile('image/png,image/jpeg,image/webp,image/gif'));
-  if (!f) return;
-  try {
-    await insertImageFromFile(f);
-  } catch (e) {
-    st().toast(errorText(e), 'error');
-  }
+  s.addObject(createStrokes({ x: page.width / 2, y: page.height / 2 }));
 }
 
 export function addTemplate(id: string) {
@@ -128,13 +116,12 @@ export async function printDocument() {
   }
 }
 
-/** Files dropped on the window: projects, KLX files or images. */
+/** Files dropped on the window: projects or KLX files. */
 export async function handleDroppedFiles(files: FileList) {
   const f = files[0];
   if (!f) return;
   const name = f.name.toLowerCase();
   if (name.endsWith('.klx')) return importKlxFile(f);
   if (name.endsWith('.json') || name.endsWith('.midad')) return openProjectFile(f);
-  if (f.type.startsWith('image/')) return insertImage(f);
-  st().toast('نوع الملف غير مدعوم. اسحب مشروعًا أو ملف KLX أو صورة.', 'error');
+  st().toast('نوع الملف غير مدعوم. اسحب مشروعًا أو ملف KLX.', 'error');
 }

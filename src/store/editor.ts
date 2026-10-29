@@ -4,7 +4,17 @@ import type { Draft } from 'immer';
 import { createDoc, createPage, uid } from '../model/defaults';
 import type { DocObject, MidadDoc, Page } from '../model/types';
 
-export type Tool = 'select' | 'glyph' | 'hand' | 'mark' | 'text';
+export type Tool = 'select' | 'glyph' | 'stretch' | 'hand' | 'mark' | 'text';
+
+/**
+ * Parts of a line being edited: a whole connected segment (مقطع) on a single click, or one
+ * letter, dot group or diacritic after a double click.
+ */
+export interface GlyphSelection {
+  objectId: string;
+  keys: string[];
+  level: 'segment' | 'letter';
+}
 export type DialogId = 'export' | 'templates' | 'works' | 'pageText' | 'about' | 'fonts' | 'import' | 'shortcuts' | null;
 
 export interface ViewState {
@@ -33,7 +43,7 @@ interface EditorState {
   doc: MidadDoc;
   pageIndex: number;
   selection: string[];
-  glyphSel: { objectId: string; keys: string[] } | null;
+  glyphSel: GlyphSelection | null;
   tool: Tool;
   view: ViewState;
   /** element chosen for placement while the element tool is active */
@@ -76,7 +86,7 @@ interface EditorState {
 
   select: (ids: string[]) => void;
   toggleSelect: (id: string) => void;
-  setGlyphSel: (sel: { objectId: string; keys: string[] } | null) => void;
+  setGlyphSel: (sel: GlyphSelection | null) => void;
   setTool: (t: Tool) => void;
   setView: (v: Partial<ViewState>) => void;
   startElement: (id: string) => void;
@@ -289,7 +299,7 @@ export const useEditor = create<EditorState>()(
         set((s) => {
           if (t === 'mark' && s.tool !== 'mark') s.elementOwner = ownerFromSelection(s);
           s.tool = t;
-          if (t !== 'glyph') s.glyphSel = null;
+          if (t !== 'glyph' && t !== 'stretch') s.glyphSel = null;
         }),
       setView: (v) => set((s) => void Object.assign(s.view, v)),
       startElement: (id) =>

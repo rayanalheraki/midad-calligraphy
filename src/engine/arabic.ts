@@ -212,3 +212,33 @@ export function justifyCounts(
   }
   return counts;
 }
+
+const isSpace = (cp: number) => cp === 0x20 || cp === 0xa0 || cp === 0x0a || cp === 0x09;
+
+/**
+ * Connected segments (مقاطع): for every UTF-16 index of `text`, the index of the first
+ * character of the run of joined letters it belongs to, or -1 for spaces. Diacritics belong
+ * to the segment of their letter.
+ */
+export function segmentOf(text: string): Int32Array {
+  const out = new Int32Array(text.length).fill(-1);
+  let start = -1;
+  let prevJoinsNext = false;
+  let i = 0;
+  for (const ch of text) {
+    const cp = ch.codePointAt(0) ?? 0;
+    const jt = joiningType(cp);
+    if (isSpace(cp)) {
+      start = -1;
+      prevJoinsNext = false;
+    } else if (jt === 'T') {
+      if (start < 0) start = i;
+    } else {
+      if (!(start >= 0 && prevJoinsNext && joinsToPrev(jt))) start = i;
+      prevJoinsNext = joinsToNext(jt);
+    }
+    if (!isSpace(cp)) for (let k = 0; k < ch.length; k++) out[i + k] = start;
+    i += ch.length;
+  }
+  return out;
+}

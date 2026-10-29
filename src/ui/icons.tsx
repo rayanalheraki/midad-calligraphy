@@ -39,11 +39,11 @@ export const IconMarks = () => (
     <path d="M15.5 15l2.2-2.2 2.2 2.2-2.2 2.2z" fill="currentColor" />
   </Icon>
 );
-export const IconImage = () => (
+export const IconStretch = () => (
   <Icon>
-    <rect x="3" y="4" width="18" height="16" rx="2" />
-    <circle cx="9" cy="9.5" r="1.8" />
-    <path d="M21 16l-5.5-5.5L5 20" />
+    <path d="M20 9v4.5c0 1-.8 1.5-1.6 1.5H4" />
+    <path d="M7 12l-3 3 3 3" />
+    <path d="M20 5.5l1.2 1.2L20 7.9l-1.2-1.2z" fill="currentColor" />
   </Icon>
 );
 export const IconUndo = () => (

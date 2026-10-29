@@ -1,13 +1,30 @@
 import { useEffect, useRef, useState } from 'react';
 import { allFontDefs, findFontDef, getLoadedFont, type FontDef } from '../engine/fonts';
+import { computeTextGeometry } from '../engine/layout';
+import { createText } from '../model/defaults';
 import { useFonts } from '../store/fonts';
 import { useEditor } from '../store/editor';
 
 const SAMPLE = 'بسم الله الرحمن الرحيم';
 
-function previewStyle(def: FontDef) {
+const samples = new Map<string, { d: string; vb: string }>();
+
+/** The sample drawn by the app's own shaping, so it looks exactly as it will on the page. */
+function FontSample({ def }: { def: FontDef }) {
   const lf = getLoadedFont(def.id);
-  return lf ? { fontFamily: `"${lf.cssFamily}", var(--font-ui)` } : undefined;
+  if (!lf) return <span className="font-sample pending">{SAMPLE}</span>;
+  let s = samples.get(def.id);
+  if (!s) {
+    const geo = computeTextGeometry(createText({ text: SAMPLE, fontId: def.id, size: 10 }), lf);
+    const b = geo.baseBox;
+    s = { d: geo.glyphs.filter((g) => !g.hidden).map((g) => g.d).join(''), vb: `${b.minX - 1} ${b.minY - 1} ${b.maxX - b.minX + 2} ${b.maxY - b.minY + 2}` };
+    samples.set(def.id, s);
+  }
+  return (
+    <svg className="font-sample" viewBox={s.vb} preserveAspectRatio="xMaxYMid meet" role="img" aria-label={SAMPLE}>
+      <path d={s.d} />
+    </svg>
+  );
 }
 
 export function FontPicker({ value, onChange }: { value: string; onChange: (id: string) => void }) {
@@ -45,9 +62,7 @@ export function FontPicker({ value, onChange }: { value: string; onChange: (id: 
       <button type="button" className="font-current" aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
         <span className="font-name">{current?.name ?? value}</span>
         <span className="font-cat">{current?.category}</span>
-        <span className="font-sample" style={current ? previewStyle(current) : undefined}>
-          {SAMPLE}
-        </span>
+        {current ? <FontSample def={current} /> : <span className="font-sample">{SAMPLE}</span>}
       </button>
       {open && (
         <div className="font-list" role="listbox" aria-label="الخطوط">
@@ -67,9 +82,7 @@ export function FontPicker({ value, onChange }: { value: string; onChange: (id: 
                   }}
                 >
                   <span className="font-name">{def.name}</span>
-                  <span className="font-sample" style={previewStyle(def)}>
-                    {SAMPLE}
-                  </span>
+                  <FontSample def={def} />
                 </button>
               ))}
             </div>

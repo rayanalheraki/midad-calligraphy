@@ -46,7 +46,6 @@ export const TEMPLATES: Template[] = [
     description: 'عبارتان على قوسين متقابلين حول لفظ في المركز.',
     build: () => {
       const p = createPage(200, 200, 'ختم');
-      p.background.color = '#fffdf8';
       const red: Fill = { kind: 'solid', color: SEAL };
       p.objects.push(tatweelRing(100, 100, 88, 214, red, 'الحلقة الخارجية'));
       p.objects.push(tatweelRing(100, 100, 48, 126, red, 'الحلقة الداخلية'));
@@ -86,7 +85,6 @@ export const TEMPLATES: Template[] = [
     description: 'نسخ مشكول بكشيدة وتعبئة ذهبية، وآية بين قوسين مزخرفين.',
     build: () => {
       const p = createPage(297, 210, 'بسملة');
-      p.background.color = '#fbf7ec';
       p.objects.push(
         createText({
           text: 'بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ',
@@ -114,7 +112,6 @@ export const TEMPLATES: Template[] = [
     description: 'تكرار دوراني لكلمة واحدة حول مركز واحد.',
     build: () => {
       const p = createPage(200, 200, 'وردة');
-      p.background.color = '#ffffff';
       p.objects.push(
         createText({
           text: 'الله',
@@ -137,7 +134,6 @@ export const TEMPLATES: Template[] = [
     description: 'عبارة ومرآتها متقابلتان، من أساليب الخط التقليدية.',
     build: () => {
       const p = createPage(220, 140, 'مثنى');
-      p.background.color = '#f4f6fb';
       p.objects.push(createText({ text: 'ما شاء الله', fontId: 'aref-ruqaa-bold', size: 24, x: 110, y: 80, mirror: 'x', mirrorGap: 1, fill: { kind: 'solid', color: INK }, name: 'مثنى' }));
       p.objects.push(element('dot1', 110, 104, 30, { kind: 'solid', color: '#b4402f' }));
       return p;
@@ -146,15 +142,12 @@ export const TEMPLATES: Template[] = [
   {
     id: 'eid',
     name: 'بطاقة تهنئة',
-    description: 'خلفية متدرجة بنقش نجمي وعبارة بخط الرقعة.',
+    description: 'نجمة مذهّبة فوق عبارة بخط الرقعة وتحية بالكوفي.',
     build: () => {
       const p = createPage(150, 100, 'بطاقة');
-      p.background.color = '#1f3a73';
-      p.background.gradient = { from: '#1f3a73', to: '#0e1c3d', angle: 90 };
-      p.background.pattern = { kind: 'stars8', color: '#c9a23a', size: 14, opacity: 0.13 };
       p.objects.push(element('star', 75, 24, 16, { kind: 'gold' }));
       p.objects.push(createText({ text: 'عيد مبارك', fontId: 'aref-ruqaa-bold', size: 24, x: 75, y: 58, fill: { kind: 'gold' }, name: 'التهنئة' }));
-      p.objects.push(createText({ text: 'كل عام وأنتم بخير', fontId: 'reem-kufi', size: 7, x: 75, y: 79, fill: { kind: 'solid', color: '#e9edf5' }, name: 'تحية' }));
+      p.objects.push(createText({ text: 'كل عام وأنتم بخير', fontId: 'reem-kufi', size: 7, x: 75, y: 79, fill: { kind: 'solid', color: INK }, name: 'تحية' }));
       return p;
     },
   },
@@ -164,7 +157,6 @@ export const TEMPLATES: Template[] = [
     description: 'شطرا بيت للمتنبي بينهما فاصل من نقاط القلم.',
     build: () => {
       const p = createPage(210, 148, 'بيت شعر');
-      p.background.color = '#fffdf7';
       p.objects.push(createText({ text: 'الخيل والليل والبيداء تعرفني', fontId: 'nastaliq', size: 12, x: 105, y: 58, fill: { kind: 'solid', color: INK }, name: 'الشطر الأول' }));
       p.objects.push(element('dot3', 105, 80, 18, { kind: 'solid', color: '#7a5a12' }));
       p.objects.push(createText({ text: 'والسيف والرمح والقرطاس والقلم', fontId: 'nastaliq', size: 12, x: 105, y: 104, fill: { kind: 'solid', color: INK }, name: 'الشطر الثاني' }));
@@ -177,7 +169,6 @@ export const TEMPLATES: Template[] = [
     description: 'عبارة كوفية على قوس تعلوها علامة مذهّبة.',
     build: () => {
       const p = createPage(200, 200, 'قوس كوفي');
-      p.background.color = '#ffffff';
       p.objects.push(element('rub-hizb', 100, 70, 26, { kind: 'gold' }));
       p.objects.push(
         createText({
