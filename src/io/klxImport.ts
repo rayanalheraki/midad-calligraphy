@@ -14,7 +14,7 @@ import type { ImportReport } from '../store/editor';
 const STYLE_FONT: Record<number, string> = {
   1: 'nastaliq',
   2: 'amiri',
-  3: 'layla-thuluth',
+  3: 'am-thulth',
   4: 'nastaliq',
   5: 'nastaliq',
   6: 'amiri',

@@ -31,17 +31,19 @@ describe('connected segments', () => {
 describe('alternates, variants and lengthening', () => {
   let amiri: LoadedFont;
   let thuluth: LoadedFont;
+  let diwani: LoadedFont;
   beforeAll(async () => {
     amiri = await loadTestFont('amiri');
-    thuluth = await loadTestFont('layla-thuluth');
+    thuluth = await loadTestFont('am-thulth');
+    diwani = await loadTestFont('layla-diwani');
   });
 
   it('loads the Thuluth font and shapes joined Arabic with it', () => {
-    const geo = computeTextGeometry(createText({ text: 'بسم الله', fontId: 'layla-thuluth' }), thuluth);
+    const geo = computeTextGeometry(createText({ text: 'بسم الله', fontId: 'am-thulth' }), thuluth);
     expect(geo.glyphs.length).toBeGreaterThanOrEqual(4);
     expect(geo.width).toBeGreaterThan(5);
-    // The font's «الله» ligature has no outline; the word is drawn from its letters instead.
-    const allah = computeTextGeometry(createText({ text: 'الحمد لله', fontId: 'layla-thuluth' }), thuluth);
+    // Layla Diwani's «الله» ligature has no outline; the word is drawn from its letters instead.
+    const allah = computeTextGeometry(createText({ text: 'الحمد لله', fontId: 'layla-diwani' }), diwani);
     expect(allah.glyphs.filter((g) => !g.mark && g.d.length > 0).length).toBeGreaterThanOrEqual(8);
   });
 
@@ -112,7 +114,7 @@ describe('alternates, variants and lengthening', () => {
   });
 
   it('works on Thuluth too', () => {
-    const o = createText({ text: 'كتب', fontId: 'layla-thuluth', size: 20 });
+    const o = createText({ text: 'كتب', fontId: 'am-thulth', size: 20 });
     const geo = computeTextGeometry(o, thuluth);
     expect(geo.glyphs.some((g) => g.stretchable)).toBe(true);
   });

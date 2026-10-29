@@ -2,7 +2,7 @@
 // Only known fields are copied, numbers are clamped and colours must be #rrggbb.
 // Anything else (including images and page backgrounds of older files) is dropped.
 import { clamp } from '../engine/geom';
-import { findFontDef, DEFAULT_FONT_ID } from '../engine/fonts';
+import { currentFontId, findFontDef, DEFAULT_FONT_ID } from '../engine/fonts';
 import { MAX_STRETCH_EM } from '../engine/layout';
 import { createPage, createStrokes, createText, defaultGlyphOverride, uid } from './defaults';
 import { findElement } from './elements';
@@ -115,7 +115,7 @@ function segVariants(v: unknown): Record<string, string[]> {
 
 function textObject(v: Obj, warnings: string[]): TextObject {
   const d = createText();
-  let fontId = str(v.fontId, DEFAULT_FONT_ID, 80);
+  let fontId = currentFontId(str(v.fontId, DEFAULT_FONT_ID, 80));
   if (!findFontDef(fontId)) {
     warnings.push(`الخط «${fontId}» غير متوفر، استُخدم خط أميري بدلًا منه.`);
     fontId = DEFAULT_FONT_ID;
@@ -172,7 +172,7 @@ function object(v: unknown, warnings: string[]): DocObject | null {
     case 'mark': {
       const element = str(v.element, '', 40);
       const def = findElement(element);
-      let fontId = str(v.fontId, DEFAULT_FONT_ID, 80);
+      let fontId = currentFontId(str(v.fontId, DEFAULT_FONT_ID, 80));
       if (!findFontDef(fontId)) fontId = DEFAULT_FONT_ID;
       const shape = def ? def.shape : oneOf(v.shape, MARK_SHAPES, 'dot1');
       return {

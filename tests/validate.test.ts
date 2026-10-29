@@ -119,3 +119,13 @@ describe('element attachment', () => {
     expect(withAttached([line, m1, m2], [line.id]).sort()).toEqual([line.id, m1.id].sort());
   });
 });
+
+describe('replaced fonts', () => {
+  it('opens lines set in Layla Thuluth with the Thuluth font that replaced it', () => {
+    const doc = createDoc();
+    doc.pages[0].objects.push(createText({ text: 'بسم الله', fontId: 'layla-thuluth' }));
+    const { doc: out, warnings } = validateDoc(JSON.parse(JSON.stringify(doc)));
+    expect(out.pages[0].objects[0]).toMatchObject({ fontId: 'am-thulth' });
+    expect(warnings).toEqual([]);
+  });
+});

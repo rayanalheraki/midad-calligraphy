@@ -680,6 +680,8 @@ export function Stage() {
     />
   );
   let variantAnchor: Point | null = null;
+  // Half the widest the alternates strip gets, so it stays inside the canvas.
+  const popHalf = Math.max(60, Math.min(290, (size.w - (view.rulers ? RULER : 0) - 16) / 2));
   if (tool === 'stretch' && glyphObject) {
     const lf = getLoadedFont(glyphObject.fontId);
     if (lf) {
@@ -824,7 +826,7 @@ export function Stage() {
       {variantAnchor && variants.length > 1 && glyphObject && glyphSel && (
         <div
           className="variant-pop"
-          style={{ left: clamp(variantAnchor.x, 120, Math.max(120, size.w - 120)), top: Math.min(variantAnchor.y + 14, Math.max(0, size.h - 90)) }}
+          style={{ left: clamp(variantAnchor.x, popHalf, Math.max(popHalf, size.w - popHalf - (view.rulers ? RULER : 0))), top: Math.min(variantAnchor.y + 14, Math.max(0, size.h - 90)) }}
           onPointerDown={(e) => e.stopPropagation()}
         >
           <div className="variant-pop-title">{glyphSel.level === 'segment' ? 'بدائل المقطع' : 'بدائل الحرف'} <kbd>[</kbd> <kbd>]</kbd></div>

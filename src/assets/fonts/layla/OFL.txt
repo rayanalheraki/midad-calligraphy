@@ -1,8 +1,8 @@
 Copyright (c) 2014, 2015, 2016, 2017, Mohammed Isam (http://sites.google.com/site/mohammedisam2000 | email: mohammed_isam1984@yahoo.com),
 with Reserved Font Name Layla.
 
-Applies to LaylaThuluth.ttf and LaylaDiwani.ttf (Layla font project, version 2.0),
-downloaded from https://fontlibrary.org/en/font/layla-thuluth and https://fontlibrary.org/en/font/layla-diwani
+Applies to LaylaDiwani.ttf (Layla font project, version 2.0),
+downloaded from https://fontlibrary.org/en/font/layla-diwani
 
 This Font Software is licensed under the SIL Open Font License, Version 1.1.
 This license is copied below, and is also available with a FAQ at:

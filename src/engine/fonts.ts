@@ -42,7 +42,7 @@ export const BUILTIN_FONTS: FontDef[] = [
   { id: 'scheherazade-bold', name: 'شهرزاد عريض', category: 'نسخ', file: G + 'scheherazade-new/700Bold/ScheherazadeNew_700Bold.ttf', lang: 'ar', kashida: true, builtin: true },
   { id: 'lateef', name: 'لطيف', category: 'نسخ', file: G + 'lateef/400Regular/Lateef_400Regular.ttf', lang: 'ar', kashida: true, builtin: true },
   { id: 'mirza', name: 'ميرزا', category: 'نسخ فارسي', file: G + 'mirza/400Regular/Mirza_400Regular.ttf', lang: 'ar', kashida: true, builtin: true },
-  { id: 'layla-thuluth', name: 'ليلى ثلث', category: 'ثلث', file: './src/assets/fonts/layla/LaylaThuluth.ttf', lang: 'ar', kashida: true, builtin: true },
+  { id: 'am-thulth', name: 'ثلث مشرف', category: 'ثلث', file: './src/assets/fonts/amoshref/AMoshref-Thulth.ttf', lang: 'ar', kashida: true, builtin: true },
   { id: 'ruwudu', name: 'رُدود', category: 'ديواني', file: G + 'ruwudu/400Regular/Ruwudu_400Regular.ttf', lang: 'ar', kashida: false, builtin: true },
   { id: 'ruwudu-bold', name: 'رُدود عريض', category: 'ديواني', file: G + 'ruwudu/700Bold/Ruwudu_700Bold.ttf', lang: 'ar', kashida: false, builtin: true },
   { id: 'layla-diwani', name: 'ليلى ديواني', category: 'ديواني', file: './src/assets/fonts/layla/LaylaDiwani.ttf', lang: 'ar', kashida: false, builtin: true },
@@ -98,8 +98,16 @@ export function allFontDefs(): FontDef[] {
   return [...BUILTIN_FONTS, ...userDefs.values()];
 }
 
+/** Built-in fonts that were replaced: documents using them open with the successor. */
+const RENAMED: Record<string, string> = { 'layla-thuluth': 'am-thulth' };
+
 export function findFontDef(id: string): FontDef | undefined {
-  return BUILTIN_FONTS.find((f) => f.id === id) ?? userDefs.get(id);
+  return BUILTIN_FONTS.find((f) => f.id === (RENAMED[id] ?? id)) ?? userDefs.get(id);
+}
+
+/** Current id of a font, following replaced built-in fonts. */
+export function currentFontId(id: string): string {
+  return RENAMED[id] ?? id;
 }
 
 export function addUserFontDef(def: FontDef): void {
