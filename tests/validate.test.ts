@@ -30,8 +30,9 @@ describe('project validation', () => {
       text: 'بسم الله',
       segVariants: { '0': ['ss01', '-liga', 'salt=2', 'bad feature', 'x@1:2'], '4': ['<script>'], abc: ['ss02'] },
       glyphs: {
-        '0.0': { ...defaultGlyphOverride(), alt: 'uni0628.alt', stretch: 1.5 },
-        '1.0': { ...defaultGlyphOverride(), alt: 'bad name with spaces', stretch: 99 },
+        '0.0': { ...defaultGlyphOverride(), alt: 'uni0628.alt', stretch: 1.5, dip: 150 },
+        '1.0': { ...defaultGlyphOverride(), alt: 'bad name with spaces', stretch: 99, dip: 9999 },
+        '2.0': { ...defaultGlyphOverride(), stretch: 1 },
       },
     });
     const doc = createDoc();
@@ -39,9 +40,12 @@ describe('project validation', () => {
     const out = validateDoc(JSON.parse(JSON.stringify(doc))).doc.pages[0].objects[0];
     if (out.type !== 'text') throw new Error('expected text');
     expect(out.segVariants).toEqual({ '0': ['ss01', '-liga', 'salt=2'] });
-    expect(out.glyphs['0.0']).toMatchObject({ alt: 'uni0628.alt', stretch: 1.5 });
+    expect(out.glyphs['0.0']).toMatchObject({ alt: 'uni0628.alt', stretch: 1.5, dip: 150 });
     expect(out.glyphs['1.0'].alt).toBeNull();
     expect(out.glyphs['1.0'].stretch).toBe(8);
+    expect(out.glyphs['1.0'].dip).toBe(300);
+    // An unset dip stays unset (the style's default), also in files saved before it existed.
+    expect(out.glyphs['2.0'].dip).toBeNull();
   });
 
   it('clamps numbers, sanitises colours and ignores unknown fields', () => {

@@ -5,7 +5,8 @@ import { defaultGlyphOverride, PAGE_SIZES } from '../model/defaults';
 import { findElement } from '../model/elements';
 import { applyTextEdit } from '../model/textEdit';
 import { featureLabel, findFontDef, getLoadedFont } from '../engine/fonts';
-import { kashidaSlots, MAX_STRETCH_EM, textGeometry } from '../engine/layout';
+import { kashidaSlots, MAX_DIP_PERCENT, MAX_STRETCH_EM, textGeometry } from '../engine/layout';
+import { dipsByDefault } from '../engine/stretch';
 import { segmentOf } from '../engine/arabic';
 import { segmentStretchKey } from '../engine/variants';
 import { rotateInGroup, scaleInGroup } from '../model/glyphGroup';
@@ -395,6 +396,12 @@ function GlyphSection({ o, sel }: { o: TextObject; sel: GlyphSelection }) {
       ? first.key
       : null;
   const stretchMm = stretchKey ? (o.glyphs[stretchKey]?.stretch ?? 0) * o.size : 0;
+  const dip = stretchKey ? o.glyphs[stretchKey]?.dip ?? null : null;
+  const setDip = (v: number | null) =>
+    live((d) => {
+      const t = d as TextObject;
+      if (stretchKey) t.glyphs[stretchKey] = { ...(t.glyphs[stretchKey] ?? defaultGlyphOverride()), dip: v };
+    });
 
   // Group centre and each glyph's own centre, for turning and resizing as one piece.
   const box = chosen.reduce((acc, g) => unionRect(acc, g.bbox), emptyRect());
@@ -446,6 +453,25 @@ function GlyphSection({ o, sel }: { o: TextObject; sel: GlyphSelection }) {
           </Row>
         ) : (
           <p className="note">{segment ? 'لا يحتوي هذا المقطع حرفًا قابلًا للمدّ.' : 'هذا الحرف غير قابل للمدّ.'}</p>
+        )}
+        {stretchKey && stretchMm > 0 && (
+          <Row label="تقعير المدّ" hint={dip === null ? 'تلقائي حسب نوع الخط؛ 0% مدّ مستقيم و100% التقعير المعتاد.' : undefined}>
+            <SliderNumber
+              label="عمق التقعير"
+              value={dip ?? (dipsByDefault(lf) ? 100 : 0)}
+              min={0}
+              max={MAX_DIP_PERCENT}
+              step={5}
+              digits={0}
+              unit="%"
+              onChange={(v) => setDip(Math.min(MAX_DIP_PERCENT, Math.max(0, v)))}
+            />
+            {dip !== null && (
+              <button type="button" className="link" onClick={() => setDip(null)}>
+                تلقائي
+              </button>
+            )}
+          </Row>
         )}
         {slot && (
           <Row label="كشيدة بعد الحرف">

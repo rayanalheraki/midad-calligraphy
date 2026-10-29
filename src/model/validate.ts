@@ -3,7 +3,7 @@
 // Anything else (including images and page backgrounds of older files) is dropped.
 import { clamp } from '../engine/geom';
 import { currentFontId, findFontDef, DEFAULT_FONT_ID } from '../engine/fonts';
-import { MAX_STRETCH_EM } from '../engine/layout';
+import { MAX_DIP_PERCENT, MAX_STRETCH_EM } from '../engine/layout';
 import { createPage, createStrokes, createText, defaultGlyphOverride, uid } from './defaults';
 import { findElement } from './elements';
 import type {
@@ -94,6 +94,7 @@ function glyphOverrides(v: unknown): Record<string, GlyphOverride> {
       hidden: bool(g.hidden, false),
       alt: typeof g.alt === 'string' && /^[\x21-\x7e]{1,63}$/.test(g.alt) ? g.alt : null,
       stretch: num(g.stretch, 0, 0, MAX_STRETCH_EM),
+      dip: g.dip == null ? null : num(g.dip, 100, 0, MAX_DIP_PERCENT),
     };
   }
   return out;

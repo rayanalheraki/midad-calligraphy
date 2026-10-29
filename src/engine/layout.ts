@@ -20,10 +20,12 @@ import {
 } from './geom';
 import { glyphOutline, measureText, shapeText } from './shape';
 import { glyphByName } from './gsub';
-import { stretchCut, stretchOutline } from './stretch';
+import { dipDepth, dipsByDefault, stretchDip, stretchOutline, stretchX, stretchZone, type StretchZone } from './stretch';
 
 /** Longest lengthening of one letter, in ems. */
 export const MAX_STRETCH_EM = 8;
+/** Deepest dip of a lengthened letter, in percent of the standard one. */
+export const MAX_DIP_PERCENT = 300;
 
 export interface PlacedGlyph {
   /** stable key used for per-glyph overrides: "<origin index>[k].<n>" */
@@ -162,8 +164,10 @@ export function computeTextGeometry(obj: TextObject, lf: LoadedFont): TextGeomet
   const gids: number[] = [];
   const advOrig: number[] = [];
   const adv: number[] = [];
-  const cuts: (number | null)[] = [];
+  const cuts: (StretchZone | null)[] = [];
   const deltas: number[] = [];
+  const dips: number[] = [];
+  const autoDip = dipsByDefault(lf) ? 1 : 0;
   const joinsLeft: boolean[] = [];
   for (let i = 0; i < n; i++) {
     const g = run.glyphs[i];
@@ -186,13 +190,14 @@ export function computeTextGeometry(obj: TextObject, lf: LoadedFont): TextGeomet
         break;
       }
     }
-    const cut = g.mark ? null : stretchCut(lf, gid, left || kashida[i]);
+    const cut = g.mark ? null : stretchZone(lf, gid, left || kashida[i]);
     const delta = cut !== null && ov?.stretch ? Math.min(MAX_STRETCH_EM, Math.max(0, ov.stretch)) * lf.upem : 0;
     gids.push(gid);
     advOrig.push(g.ax + extra);
     adv.push(ax + extra + delta);
     cuts.push(cut);
     deltas.push(delta);
+    dips.push(ov?.dip == null ? autoDip : Math.min(MAX_DIP_PERCENT, Math.max(0, ov.dip)) / 100);
     joinsLeft.push(left);
   }
 
@@ -224,21 +229,27 @@ export function computeTextGeometry(obj: TextObject, lf: LoadedFont): TextGeomet
     let box = outline.box;
     const cut = cuts[i];
     if (deltas[i] && cut !== null) {
-      cmds = stretchOutline(cmds, cut, deltas[i], lf.upem);
-      box = { ...box, minX: box.minX + (box.minX >= cut ? deltas[i] : 0), maxX: box.maxX + (box.maxX > cut ? deltas[i] : 0) };
+      cmds = stretchOutline(cmds, cut, deltas[i], lf.upem, dips[i]);
+      box = { minX: stretchX(cut, deltas[i], box.minX), maxX: stretchX(cut, deltas[i], box.maxX), minY: box.minY - dipDepth(deltas[i], lf.upem, dips[i]), maxY: box.maxY };
     }
 
     // A mark keeps its place on its letter when that letter is lengthened or replaced.
     let x = pens[i] + g.dx;
+    let dip = 0;
     const b = baseOf[i];
     if (g.mark && b !== i && (deltas[b] || gids[b] !== run.glyphs[b].gid)) {
       const rel = pensOrig[i] + g.dx - pensOrig[b];
-      const bc = cuts[b];
-      x = pens[b] + rel + (deltas[b] && bc !== null && rel > bc ? deltas[b] : 0);
+      const zone = cuts[b];
+      // The mark follows the point of the stroke under its centre.
+      const mid = rel + (box.minX + box.maxX) / 2;
+      if (deltas[b] && zone) {
+        x = pens[b] + rel + stretchX(zone, deltas[b], mid) - mid;
+        dip = stretchDip(zone, deltas[b], mid, lf.upem, dips[b]);
+      } else x = pens[b] + rel;
     }
     const xcMm = (pens[b] + adv[b] / 2 - totalUnits / 2) * s;
     const originX = (x - totalUnits / 2) * s;
-    const originY = -g.dy * s;
+    const originY = (dip - g.dy) * s;
     const { p, angle } = curvePoint(obj, xcMm, totalMm);
     let m: Matrix = chain(translate(p.x, p.y), rotate(angle), translate(originX - xcMm, originY), scale(s, -s));
 

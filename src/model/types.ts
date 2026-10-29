@@ -46,6 +46,8 @@ export interface GlyphOverride {
   alt: string | null;
   /** lengthening (مدّ) of the letter, in ems */
   stretch: number;
+  /** depth of the lengthened stroke's dip (تقعير), in percent of the standard one; null: the style's default */
+  dip: number | null;
 }
 
 export type TextPathMode = 'straight' | 'arc' | 'circle' | 'wave';

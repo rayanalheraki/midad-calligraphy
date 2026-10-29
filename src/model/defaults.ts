@@ -33,7 +33,7 @@ export function createDoc(title = 'عمل جديد'): MidadDoc {
 }
 
 export function defaultGlyphOverride(): GlyphOverride {
-  return { dx: 0, dy: 0, rotate: 0, scale: 1, color: null, hidden: false, alt: null, stretch: 0 };
+  return { dx: 0, dy: 0, rotate: 0, scale: 1, color: null, hidden: false, alt: null, stretch: 0, dip: null };
 }
 
 export function createText(partial: Partial<TextObject> = {}): TextObject {
