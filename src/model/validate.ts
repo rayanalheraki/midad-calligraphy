@@ -12,7 +12,7 @@ import type {
   DocObject,
   Fill,
   GlyphOverride,
-  MidadDoc,
+  KhattatDoc,
   Page,
   PatternKind,
   Shadow,
@@ -28,6 +28,9 @@ export const LIMITS = {
   maxGlyphOverrides: 5000,
   maxImageChars: 15 * 1024 * 1024,
 };
+
+/** Format id written by the app under its previous name. */
+const LEGACY_FORMAT = 'midad';
 
 type Obj = Record<string, unknown>;
 const isObj = (v: unknown): v is Obj => typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -274,8 +277,9 @@ function page(v: unknown, warnings: string[]): Page | null {
   return p;
 }
 
-export function validateDoc(raw: unknown): { doc: MidadDoc; warnings: string[] } {
-  if (!isObj(raw) || raw.format !== 'midad') throw new Error('هذا الملف ليس مشروع مِداد.');
+export function validateDoc(raw: unknown): { doc: KhattatDoc; warnings: string[] } {
+  // Projects saved before the app was renamed carry the legacy format id; they load and re-save as 'khattat'.
+  if (!isObj(raw) || (raw.format !== 'khattat' && raw.format !== LEGACY_FORMAT)) throw new Error('هذا الملف ليس مشروع خطاط.');
   if (raw.version !== 1) throw new Error('إصدار المشروع غير مدعوم.');
   const warnings: string[] = [];
   const pages: Page[] = [];
@@ -290,7 +294,7 @@ export function validateDoc(raw: unknown): { doc: MidadDoc; warnings: string[] }
   const now = new Date().toISOString();
   return {
     doc: {
-      format: 'midad',
+      format: 'khattat',
       version: 1,
       title: str(raw.title, 'عمل بلا عنوان', 200),
       pages,

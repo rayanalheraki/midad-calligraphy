@@ -1,14 +1,14 @@
-import type { MidadDoc } from '../model/types';
+import type { KhattatDoc } from '../model/types';
 import { validateDoc } from '../model/validate';
 import { downloadBlob, safeFileName } from './export';
 
 export const MAX_PROJECT_BYTES = 80 * 1024 * 1024;
 
-export function serializeDoc(doc: MidadDoc): string {
+export function serializeDoc(doc: KhattatDoc): string {
   return JSON.stringify(doc);
 }
 
-export function parseProject(json: string): { doc: MidadDoc; warnings: string[] } {
+export function parseProject(json: string): { doc: KhattatDoc; warnings: string[] } {
   if (json.length > MAX_PROJECT_BYTES) throw new Error('حجم ملف المشروع أكبر من الحد المسموح.');
   let raw: unknown;
   try {
@@ -19,11 +19,11 @@ export function parseProject(json: string): { doc: MidadDoc; warnings: string[] 
   return validateDoc(raw);
 }
 
-export async function readProjectFile(file: File): Promise<{ doc: MidadDoc; warnings: string[] }> {
+export async function readProjectFile(file: File): Promise<{ doc: KhattatDoc; warnings: string[] }> {
   if (file.size > MAX_PROJECT_BYTES) throw new Error('حجم ملف المشروع أكبر من الحد المسموح.');
   return parseProject(await file.text());
 }
 
-export function downloadProject(doc: MidadDoc): void {
-  downloadBlob(new Blob([serializeDoc(doc)], { type: 'application/json' }), `${safeFileName(doc.title)}.midad.json`);
+export function downloadProject(doc: KhattatDoc): void {
+  downloadBlob(new Blob([serializeDoc(doc)], { type: 'application/json' }), `${safeFileName(doc.title)}.khattat.json`);
 }

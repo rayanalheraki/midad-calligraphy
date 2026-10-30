@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-Midad (مِداد) is an Arabic calligraphy editor that runs entirely in the browser (React 19 + TypeScript + Vite, state in Zustand + Immer, shaping with HarfBuzz via `harfbuzzjs` WASM). The UI is Arabic and right-to-left, so all user-facing strings (labels, toasts, error messages) are in Arabic. Code, comments and identifiers are in English.
+Khattat (خطاط) is an Arabic calligraphy editor that runs entirely in the browser (React 19 + TypeScript + Vite, state in Zustand + Immer, shaping with HarfBuzz via `harfbuzzjs` WASM). The UI is Arabic and right-to-left, so all user-facing strings (labels, toasts, error messages) are in Arabic. Code, comments and identifiers are in English.
 
 ## Commands
 
@@ -26,7 +26,7 @@ npm start            # serve dist/ via server.mjs on 127.0.0.1:4173 (prod CSP he
 
 Data flows one way: **model** (plain JSON document) → **engine** (pure geometry from model + loaded font) → **render** (SVG, shared by editor and export) → **ui**. The store holds only the document and editor state, never derived geometry.
 
-- `src/model/types.ts` is the document format (`MidadDoc` → `Page` → `DocObject`). All lengths are millimetres in page space, y grows downward. Three object types: `text` (HarfBuzz-shaped line), `mark` (standalone diacritic/dot/sign, optionally attached to a line via `ownerId` so it moves with it), `strokes` (prototype broad-nib pen line built from hand-defined letter skeletons in `engine/strokeLetters.ts` + `engine/nib.ts`).
+- `src/model/types.ts` is the document format (`KhattatDoc` → `Page` → `DocObject`). All lengths are millimetres in page space, y grows downward. Three object types: `text` (HarfBuzz-shaped line), `mark` (standalone diacritic/dot/sign, optionally attached to a line via `ownerId` so it moves with it), `strokes` (prototype broad-nib pen line built from hand-defined letter skeletons in `engine/strokeLetters.ts` + `engine/nib.ts`).
 - `src/engine/layout.ts` `computeTextGeometry` is the core pipeline for a text line: kashida placement (`arabic.ts`) → per-segment variant features turned into ranged HarfBuzz features (`feature@start:end`) → `shapeText` (`shape.ts`) → per-glyph overrides, GSUB alternates (`gsub.ts`), letter lengthening by cutting and stretching the outline (`stretch.ts`) → text path (arc/circle/wave) → repeat/mirror copies. `textGeometry` caches results in a `WeakMap` keyed by object identity, which relies on Immer producing a new object whenever a line changes — never mutate document objects outside a store recipe.
 - **Per-letter edit keys.** `TextObject.glyphs`, `kashidaAt` and `segVariants` are keyed by UTF-16 indices into `text` (glyph keys are `"<origin>[k].<n>"`; `k` marks inserted kashida). A connected segment (مقطع) is identified by the UTF-16 index of its first letter. When text is edited, `model/textEdit.ts` `applyTextEdit` shifts these keys; any new per-letter data must be handled there too.
 - `src/store/editor.ts` holds the doc plus undo/redo (snapshots of the whole doc, limit 150). Use `commit(recipe)` for a discrete change (one undo step). For drags, call `beginGesture()`, then `gesture(recipe)` repeatedly, then `endGesture()` so the whole drag is one undo step; `liveEdit` picks whichever applies. `src/store/fonts.ts` tracks font loading; its `version` bumps when a font finishes loading so renderers recompute.

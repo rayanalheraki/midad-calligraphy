@@ -20,7 +20,7 @@ export function newDocument() {
 }
 
 export async function openProjectFile(file?: File | null) {
-  const f = file ?? (await pickFile('.json,.midad,application/json'));
+  const f = file ?? (await pickFile('.json,.khattat,application/json'));
   if (!f) return;
   try {
     const { doc, warnings } = await readProjectFile(f);
@@ -133,7 +133,7 @@ export async function handleDroppedFiles(files: FileList) {
   if (!f) return;
   const name = f.name.toLowerCase();
   if (name.endsWith('.klx')) return importKlxFile(f);
-  if (name.endsWith('.json') || name.endsWith('.midad')) return openProjectFile(f);
+  if (name.endsWith('.json') || name.endsWith('.khattat')) return openProjectFile(f);
   if (f.type.startsWith('image/')) return setBackgroundImage(f);
   st().toast('نوع الملف غير مدعوم. اسحب مشروعًا أو ملف KLX أو صورة للخلفية.', 'error');
 }

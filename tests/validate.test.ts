@@ -72,7 +72,7 @@ describe('project validation', () => {
 
   it('clamps numbers, sanitises colours and ignores unknown fields', () => {
     const raw = {
-      format: 'midad',
+      format: 'khattat',
       version: 1,
       title: 'x',
       pages: [
@@ -91,6 +91,13 @@ describe('project validation', () => {
     expect(t.size).toBe(18);
     expect(t.fill).toEqual({ kind: 'solid', color: '#1b1e27' });
     expect('onclick' in t).toBe(false);
+  });
+
+  it('opens projects saved under the legacy format id and re-tags them', () => {
+    const { doc } = validateDoc({ format: 'midad', version: 1, title: 'قديم', pages: [] });
+    expect(doc.format).toBe('khattat');
+    expect(doc.title).toBe('قديم');
+    expect(() => validateDoc({ format: 'other', version: 1, pages: [] })).toThrow();
   });
 
   it('replaces unknown fonts with the default font', () => {

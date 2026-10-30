@@ -114,11 +114,11 @@ function TextSection({ o }: { o: TextObject }) {
         el.setSelectionRange(textCaret.start, textCaret.end);
       });
     };
-    window.addEventListener('midad:focus-text', focus);
-    window.addEventListener('midad:caret', caret);
+    window.addEventListener('khattat:focus-text', focus);
+    window.addEventListener('khattat:caret', caret);
     return () => {
-      window.removeEventListener('midad:focus-text', focus);
-      window.removeEventListener('midad:caret', caret);
+      window.removeEventListener('khattat:focus-text', focus);
+      window.removeEventListener('khattat:caret', caret);
     };
   }, [o.id]);
 

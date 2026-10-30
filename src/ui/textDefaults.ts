@@ -19,5 +19,5 @@ export const pendingTextFocus = { objectId: '' };
 
 export function requestTextFocus(objectId: string): void {
   pendingTextFocus.objectId = objectId;
-  window.dispatchEvent(new CustomEvent('midad:focus-text'));
+  window.dispatchEvent(new CustomEvent('khattat:focus-text'));
 }

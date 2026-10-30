@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
 import type { Draft } from 'immer';
 import { createDoc, createPage, uid } from '../model/defaults';
-import type { DocObject, MidadDoc, Page } from '../model/types';
+import type { DocObject, KhattatDoc, Page } from '../model/types';
 
 export type Tool = 'select' | 'glyph' | 'stretch' | 'hand' | 'mark' | 'text';
 
@@ -40,7 +40,7 @@ export interface ImportReport {
 }
 
 interface EditorState {
-  doc: MidadDoc;
+  doc: KhattatDoc;
   pageIndex: number;
   selection: string[];
   glyphSel: GlyphSelection | null;
@@ -50,9 +50,9 @@ interface EditorState {
   pendingElement: string;
   /** line the placed elements are attached to */
   elementOwner: string | null;
-  past: MidadDoc[];
-  future: MidadDoc[];
-  gestureBase: MidadDoc | null;
+  past: KhattatDoc[];
+  future: KhattatDoc[];
+  gestureBase: KhattatDoc | null;
   dialog: DialogId;
   toasts: Toast[];
   keyboardOpen: boolean;
@@ -60,15 +60,15 @@ interface EditorState {
   clipboard: DocObject[];
   savedWorkId: string | null;
 
-  commit: (recipe: (doc: Draft<MidadDoc>) => void) => void;
+  commit: (recipe: (doc: Draft<KhattatDoc>) => void) => void;
   beginGesture: () => void;
-  gesture: (recipe: (doc: Draft<MidadDoc>) => void) => void;
+  gesture: (recipe: (doc: Draft<KhattatDoc>) => void) => void;
   /** Applies a change inside the current gesture, or as its own undo step when none is active. */
-  liveEdit: (recipe: (doc: Draft<MidadDoc>) => void) => void;
+  liveEdit: (recipe: (doc: Draft<KhattatDoc>) => void) => void;
   endGesture: () => void;
   undo: () => void;
   redo: () => void;
-  loadDoc: (doc: MidadDoc, workId?: string | null) => void;
+  loadDoc: (doc: KhattatDoc, workId?: string | null) => void;
 
   setPageIndex: (i: number) => void;
   addPage: () => void;
@@ -132,9 +132,9 @@ function ownerFromSelection(s: Draft<EditorState>): string | null {
 
 export const useEditor = create<EditorState>()(
   immer((set, get) => {
-    const pushHistory = (before: MidadDoc) => {
+    const pushHistory = (before: KhattatDoc) => {
       set((s) => {
-        s.past.push(before as Draft<MidadDoc>);
+        s.past.push(before as Draft<KhattatDoc>);
         if (s.past.length > HISTORY_LIMIT) s.past.shift();
         s.future = [];
         s.doc.meta.modified = new Date().toISOString();
@@ -200,7 +200,7 @@ export const useEditor = create<EditorState>()(
         }),
       loadDoc: (doc, workId = null) =>
         set((s) => {
-          s.doc = doc as Draft<MidadDoc>;
+          s.doc = doc as Draft<KhattatDoc>;
           s.pageIndex = 0;
           s.selection = [];
           s.glyphSel = null;

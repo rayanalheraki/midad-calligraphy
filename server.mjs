@@ -94,5 +94,5 @@ const server = createServer(async (req, res) => {
 });
 
 server.listen(PORT, HOST, () => {
-  console.log(`Midad is running at http://${HOST}:${PORT}/`);
+  console.log(`Khattat is running at http://${HOST}:${PORT}/`);
 });

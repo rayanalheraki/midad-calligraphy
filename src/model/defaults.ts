@@ -1,7 +1,7 @@
 import type {
   Background,
   GlyphOverride,
-  MidadDoc,
+  KhattatDoc,
   Page,
   MarkObject,
   StrokesObject,
@@ -37,9 +37,9 @@ export function createPage(w = 210, h = 297, name = 'صفحة'): Page {
   return { id: uid('p'), name, width: w, height: h, background: defaultBackground(), objects: [] };
 }
 
-export function createDoc(title = 'عمل جديد'): MidadDoc {
+export function createDoc(title = 'عمل جديد'): KhattatDoc {
   const now = new Date().toISOString();
-  return { format: 'midad', version: 1, title, pages: [createPage()], meta: { created: now, modified: now } };
+  return { format: 'khattat', version: 1, title, pages: [createPage()], meta: { created: now, modified: now } };
 }
 
 export function defaultGlyphOverride(): GlyphOverride {

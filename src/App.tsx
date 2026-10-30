@@ -183,7 +183,7 @@ export function App() {
         case 'Escape':
           if (st.tool === 'glyph' && st.glyphSel?.level === 'letter') {
             // Back from one letter to its whole segment, then out of the tool.
-            window.dispatchEvent(new CustomEvent('midad:segment-level'));
+            window.dispatchEvent(new CustomEvent('khattat:segment-level'));
           } else if (st.tool === 'glyph' || st.tool === 'stretch' || st.tool === 'mark') st.setTool('select');
           else st.select([]);
           return;
@@ -217,7 +217,7 @@ export function App() {
           // Previous / next alternate of the selected segment or letter.
           if (st.tool === 'glyph' && st.glyphSel?.keys.length) {
             e.preventDefault();
-            window.dispatchEvent(new CustomEvent('midad:cycle-variant', { detail: e.code === 'BracketLeft' ? -1 : 1 }));
+            window.dispatchEvent(new CustomEvent('khattat:cycle-variant', { detail: e.code === 'BracketLeft' ? -1 : 1 }));
           }
           return;
         case 'KeyT':
@@ -256,7 +256,7 @@ export function App() {
         <ToolRail />
         <main className="canvas-area">
           <Stage />
-          {dragging && <div className="drop-hint">أفلت الملف هنا: مشروع مِداد أو ملف KLX أو صورة</div>}
+          {dragging && <div className="drop-hint">أفلت الملف هنا: مشروع خطاط أو ملف KLX أو صورة</div>}
         </main>
         <SidePanel />
       </div>

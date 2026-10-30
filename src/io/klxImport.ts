@@ -3,7 +3,7 @@
 // drawn with the closest open font, and vertical offsets of individually placed sub-words
 // are carried over as letter edits.
 import { createDoc, createPage, createText, defaultGlyphOverride } from '../model/defaults';
-import type { MidadDoc, TextObject } from '../model/types';
+import type { KhattatDoc, TextObject } from '../model/types';
 import { ensureFont } from '../engine/fontLoader';
 import { findFontDef } from '../engine/fonts';
 import { computeTextGeometry } from '../engine/layout';
@@ -68,7 +68,7 @@ function lineObject(line: KlxLine, fontId: string, lf: Awaited<ReturnType<typeof
   return obj;
 }
 
-export async function importKlx(buffer: ArrayBuffer, fileName: string): Promise<{ doc: MidadDoc; report: ImportReport }> {
+export async function importKlx(buffer: ArrayBuffer, fileName: string): Promise<{ doc: KhattatDoc; report: ImportReport }> {
   const kd = readKlxDocument(buffer);
   const doc = createDoc(fileName.replace(/\.klx$/i, '') || 'مستند مستورد');
   doc.pages = [];

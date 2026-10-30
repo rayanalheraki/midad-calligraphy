@@ -41,7 +41,7 @@ export function pageSvgString(page: Page, opts: SvgOptions = {}): { svg: string;
     `<?xml version="1.0" encoding="UTF-8"?>\n` +
     `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1" ` +
     `width="${fmt(w)}mm" height="${fmt(h)}mm" viewBox="${fmt(crop.minX)} ${fmt(crop.minY)} ${fmt(w)} ${fmt(h)}">` +
-    `<title>Midad</title>${content}</svg>`;
+    `<title>Khattat</title>${content}</svg>`;
   return { svg, width: w, height: h };
 }
 
@@ -100,7 +100,7 @@ export function downloadBlob(blob: Blob, filename: string): void {
 
 export function safeFileName(title: string): string {
   const cleaned = title.replace(/[\\/:*?"<>|\u0000-\u001f]+/g, ' ').trim().slice(0, 80);
-  return cleaned || 'midad';
+  return cleaned || 'khattat';
 }
 
 /** Prints the pages through the browser dialog; "Save as PDF" there produces a vector PDF. */

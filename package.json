@@ -1,8 +1,8 @@
 {
-  "name": "midad",
+  "name": "khattat",
   "private": true,
   "version": "1.0.0",
-  "description": "مِداد | محرر للخط العربي يعمل بالكامل في المتصفح",
+  "description": "خطاط | محرر للخط العربي يعمل بالكامل في المتصفح",
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1 --port 5173 --strictPort",

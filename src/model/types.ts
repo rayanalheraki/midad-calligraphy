@@ -174,8 +174,8 @@ export interface Page {
   objects: DocObject[];
 }
 
-export interface MidadDoc {
-  format: 'midad';
+export interface KhattatDoc {
+  format: 'khattat';
   version: 1;
   title: string;
   pages: Page[];

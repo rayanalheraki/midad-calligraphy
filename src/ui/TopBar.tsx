@@ -99,10 +99,10 @@ export function TopBar() {
 
   return (
     <header className="topbar">
-      <div className="brand" aria-label="مِداد">
+      <div className="brand" aria-label="خطاط">
         <span className="brand-mark" aria-hidden="true" />
         <span className="brand-name" style={brandFont ? { fontFamily: `"${brandFont.cssFamily}", var(--font-ui)` } : undefined}>
-          مِداد
+          خطاط
         </span>
       </div>
       <nav className="menubar" ref={ref} aria-label="القوائم">
@@ -196,7 +196,7 @@ export function TopBar() {
             { label: 'خطوطي…', onClick: () => st.setDialog('fonts') },
             { label: 'اختصارات لوحة المفاتيح', onClick: () => st.setDialog('shortcuts') },
             { separator: true },
-            { label: 'عن مِداد والأمان', onClick: () => st.setDialog('about') },
+            { label: 'عن خطاط والأمان', onClick: () => st.setDialog('about') },
           ]}
         />
       </nav>

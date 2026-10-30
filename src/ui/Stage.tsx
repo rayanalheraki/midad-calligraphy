@@ -267,11 +267,11 @@ export function Stage() {
       if (!sel || !o || o.type !== 'text' || !lf) return;
       st.setGlyphSel({ objectId: o.id, keys: segmentKeysOf(textGeometry(o, lf), sel.keys[0]), level: 'segment' });
     };
-    window.addEventListener('midad:cycle-variant', cycle);
-    window.addEventListener('midad:segment-level', up);
+    window.addEventListener('khattat:cycle-variant', cycle);
+    window.addEventListener('khattat:segment-level', up);
     return () => {
-      window.removeEventListener('midad:cycle-variant', cycle);
-      window.removeEventListener('midad:segment-level', up);
+      window.removeEventListener('khattat:cycle-variant', cycle);
+      window.removeEventListener('khattat:segment-level', up);
     };
   }, []);
 
